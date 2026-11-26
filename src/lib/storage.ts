@@ -1,4 +1,4 @@
-import type { AiSettings } from './ai';
+import { PROVIDERS, type AiSettings } from './ai';
 import type { Quiz } from './quiz';
 
 // Allt sparas bara i den här webbläsaren (localStorage).
@@ -40,7 +40,16 @@ function write(key: string, value: unknown) {
   }
 }
 
-export const loadSettings = () => ({ ...DEFAULT_SETTINGS, ...read<Partial<AiSettings>>(SETTINGS_KEY, {}) });
+const RETIRED_MODELS = ['llama-3.3-70b-versatile'];
+
+export function loadSettings(): AiSettings {
+  const s = { ...DEFAULT_SETTINGS, ...read<Partial<AiSettings>>(SETTINGS_KEY, {}) };
+  const provider = PROVIDERS.find((p) => p.id === s.provider);
+  // Leverantörer som tagits bort (t.ex. Gemini) och modeller som inte längre är öppna byts mot standardvalen.
+  if (!provider) return { ...DEFAULT_SETTINGS, keys: s.keys ?? {} };
+  if (!s.model || RETIRED_MODELS.includes(s.model)) s.model = provider.models[0].id;
+  return s;
+}
 export const saveSettings = (s: AiSettings) => write(SETTINGS_KEY, s);
 
 export const loadResults = () => read<QuizResult[]>(RESULTS_KEY, []);

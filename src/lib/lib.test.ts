@@ -67,3 +67,22 @@ describe('extractPptxFromBuffer', () => {
     expect(slides[2]).toBe('Tionde');
   });
 });
+
+import { isModelMissing, pickAvailableModel } from './ai';
+
+describe('modellval', () => {
+  it('känner igen fel om modell som saknas', () => {
+    expect(isModelMissing(404, '')).toBe(true);
+    expect(isModelMissing(400, 'The model `llama-3.3-70b-versatile` does not exist or you do not have access to it.')).toBe(true);
+    expect(isModelMissing(400, 'max_tokens too large')).toBe(false);
+  });
+  it('behåller vald modell om den finns', () => {
+    expect(pickAvailableModel('groq', 'openai/gpt-oss-20b', ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'])).toBe('openai/gpt-oss-20b');
+  });
+  it('byter till en rekommenderad modell som finns', () => {
+    expect(pickAvailableModel('groq', 'llama-3.3-70b-versatile', ['whisper-large-v3', 'openai/gpt-oss-120b'])).toBe('openai/gpt-oss-120b');
+  });
+  it('ger null om ingen rekommenderad modell finns', () => {
+    expect(pickAvailableModel('groq', 'x', ['whisper-large-v3'])).toBeNull();
+  });
+});
