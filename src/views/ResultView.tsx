@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
 import type { Quiz } from '../lib/quiz';
+import { criteriaFor } from '../lib/curriculum';
+import type { Lgr22Criteria } from '../lib/lgr22-parse';
 import type { QuizResult } from '../lib/storage';
 
 interface Props {
@@ -11,6 +14,13 @@ const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).repla
 
 export default function ResultView({ result, onRetry, onNew }: Props) {
   const { quiz, answers } = result;
+  const [criteria, setCriteria] = useState<Lgr22Criteria[]>([]);
+  useEffect(() => {
+    let alive = true;
+    criteriaFor(quiz.subject, quiz.grade).then((c) => alive && setCriteria(c.filter((x) => ['E', 'C', 'A', 'godtagbara'].includes(x.level))));
+    return () => { alive = false; };
+  }, [quiz.subject, quiz.grade]);
+  const endYear = quiz.grade <= 3 ? 3 : quiz.grade <= 6 ? 6 : 9;
   const total = quiz.questions.length;
   const score = answers.reduce((s, a) => s + a.score, 0);
   const pct = total ? score / total : 0;
@@ -49,9 +59,28 @@ export default function ResultView({ result, onRetry, onNew }: Props) {
               <div className="bar" role="img" aria-label={`${fmt(got)} av ${of}`}><div style={{ width: `${(got / of) * 100}%` }} /></div>
             </div>
           ))}
-          <p className="small muted" style={{ margin: 0 }}>Delarna är AI:ns koppling till centralt innehåll i Lgr22 och kan vara ungefärliga.</p>
+          <p className="small muted" style={{ margin: 0 }}>
+            {quiz.curriculumLabel
+              ? `Delarna kommer från ${quiz.curriculumLabel}.`
+              : 'Delarna är AI:ns koppling till centralt innehåll i Lgr22 och kan vara ungefärliga.'}
+          </p>
         </section>
       </div>
+
+      {criteria.length > 0 && (
+        <section className="card">
+          <h2>Vad krävs i {quiz.subject.toLowerCase()} i slutet av åk {endYear}?</h2>
+          <p className="muted" style={{ margin: 0 }}>Skolverkets kunskapskrav. Quizet kan inte ge ett betyg, men du ser vad lärarna bedömer.</p>
+          {criteria.map((c) => (
+            <details key={c.level}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+                {c.level === 'godtagbara' ? 'Godtagbara kunskaper' : `Betyget ${c.level}`}
+              </summary>
+              {c.text.split('\n').map((p, i) => <p key={i} style={{ margin: '8px 0 0', lineHeight: 1.55 }}>{p}</p>)}
+            </details>
+          ))}
+        </section>
+      )}
 
       <section className="card">
         <h2>{weak.length ? 'Plugga lite mer på' : 'Alla rätt!'}</h2>

@@ -18,7 +18,12 @@ npm test         # enhetstester (vitest)
 npm run build    # typkontroll och produktionsbygge i dist/
 ```
 
+## Läroplanen (Lgr22)
+
+`npm run lgr22` (`scripts/fetch-lgr22.ts`) hämtar grundskolans kursplaner från Skolverkets öppna [Syllabus-API](https://www.skolverket.se/om-oss/oppna-data/api-for-laroplaner-kurs--och-amnesplaner-syllabus) och sparar en förenklad version i `public/lgr22/`: centralt innehåll per stadium (rubriker och punkter) och kunskapskrav. API:t tillåter inte anrop direkt från webbläsare, så datan hämtas när sajten byggs i GitHub Actions, och varje måndag byggs sajten om för att få med eventuella ändringar. Mappen ligger inte i git.
+
+När ett ämne är valt får AI:n hela det centrala innehållet för stadiet och måste märka varje fråga med en av Skolverkets rubriker. Gissar appen ämnet får AI:n rubrikerna för alla ämnen. Resultatsidan visar kunskapskraven (E, C, A) för slutet av stadiet. Saknas datan faller appen tillbaka på AI:ns egen kunskap.
+
 ## Kommer senare
 
 - Backend (t.ex. Cloudflare Worker) som håller AI-nyckeln, med skydd mot missbruk, och som kan hämta godtyckliga webbsidor.
-- Kursplaner hämtade från Skolverkets öppna API så att kopplingen till Lgr22 bygger på den riktiga texten.

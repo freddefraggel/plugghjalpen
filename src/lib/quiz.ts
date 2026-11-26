@@ -1,5 +1,6 @@
 import { budgetFor, complete, parseJsonLoose, AiError, type AiSettings } from './ai';
 import type { Source } from './extract';
+import { curriculumContext, matchHeading } from './curriculum';
 
 export const SUBJECTS = [
   'Biologi', 'Fysik', 'Kemi', 'Teknik', 'Matematik', 'Svenska', 'Svenska som andraspråk', 'Engelska',
@@ -43,6 +44,8 @@ export interface Quiz {
   grade: number;
   createdAt: number;
   questions: Question[];
+  /** Varifrån områdena kommer, t.ex. "Skolverkets kursplan i biologi, centralt innehåll åk 7–9". Saknas = AI:ns egen bedömning. */
+  curriculumLabel?: string;
 }
 
 export interface QuizOptions {
@@ -136,10 +139,15 @@ export async function generateQuiz(settings: AiSettings, sources: Source[], opts
     ? `Ämne: ${opts.subject}`
     : 'Ämne: avgör själv vilket grundskoleämne materialet hör till och ange det i "subject".';
 
+  const cur = await curriculumContext(opts.subject, opts.grade);
+  const curriculumRules = cur.headings.length
+    ? `\n${cur.prompt}\n\nVIKTIGT: "area" ska vara EXAKT en av rubrikerna ovan (${opts.subject ? 'efter ##' : 'för det ämne du väljer'}), ordagrant. Välj den rubrik vars punkter frågan bäst övar på.\n`
+    : '';
+
   const user = `${subjectLine}
 Årskurs: ${opts.grade} (${stageFor(opts.grade)})
 Gör ${nMc} flervalsfrågor och ${nFree} fritextfrågor.
-
+${curriculumRules}
 Svara med JSON i exakt detta format:
 {
   "title": "kort rubrik på materialet",
@@ -155,7 +163,7 @@ Elevens material:
 `;
 
   const budget = budgetFor(settings.provider);
-  let chars = budget.inputChars;
+  let chars = Math.max(2000, budget.inputChars - curriculumRules.length);
   let outTokens = Math.min(budget.outputTokens, 600 + opts.count * 350);
   let raw = '';
   for (let attempt = 0; ; attempt++) {
@@ -177,7 +185,10 @@ Elevens material:
     }
   }
   const parsed = parseJsonLoose<{ title?: string; subject?: string; questions?: unknown[] }>(raw);
-  const questions = (parsed.questions ?? []).map(normalizeQuestion).filter((q): q is Question => q !== null);
+  const questions = (parsed.questions ?? [])
+    .map(normalizeQuestion)
+    .filter((q): q is Question => q !== null)
+    .map((q) => ({ ...q, area: matchHeading(q.area, cur.headings) }));
   if (questions.length === 0) throw new AiError('AI:n kunde inte göra några frågor av materialet. Prova med mer text.');
   return {
     id: Math.random().toString(36).slice(2, 10),
@@ -186,6 +197,7 @@ Elevens material:
     grade: opts.grade,
     createdAt: Date.now(),
     questions,
+    curriculumLabel: cur.label ?? undefined,
   };
 }
 
