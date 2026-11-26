@@ -4,6 +4,7 @@ import { extractFile, extractLink, textSource, type Source } from '../lib/extrac
 import { generateQuiz, GRADES, SUBJECTS, stageFor, buildMaterial, type Quiz, type QuestionMix } from '../lib/quiz';
 import { CloseIcon, CurriculumIcon, UploadIcon } from '../icons';
 import { loadSubject } from '../lib/curriculum';
+import CurriculumDialog from './CurriculumDialog';
 import { stageForGrade, type Lgr22Stage } from '../lib/lgr22-parse';
 
 interface Props {
@@ -30,6 +31,7 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
   const [subject, setSubject] = useState('');
   const [grade, setGrade] = useState(7);
   const [stage, setStage] = useState<Lgr22Stage | null>(null);
+  const [showCurriculum, setShowCurriculum] = useState(false);
 
   // Hämta Skolverkets centrala innehåll för valt ämne och årskurs, om datan finns.
   useEffect(() => {
@@ -226,17 +228,15 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
               </span>
             </div>
             {stage && (
-              <details>
-                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Se centralt innehåll</summary>
-                {stage.areas.map((a) => (
-                  <div key={a.heading} style={{ marginTop: 10 }}>
-                    <strong style={{ fontWeight: 600 }}>{a.heading}</strong>
-                    <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-                      {a.items.map((i) => <li key={i}>{i}</li>)}
-                    </ul>
-                  </div>
-                ))}
-              </details>
+              <>
+                <div style={{ paddingLeft: 30 }}>
+                  <span className="small">{stage.areas.map((a) => a.heading).join(' · ')}</span>
+                </div>
+                <div style={{ paddingLeft: 30 }}>
+                  <button className="link-btn" onClick={() => setShowCurriculum(true)}>Se centralt innehåll</button>
+                </div>
+                <CurriculumDialog subject={subject} stage={stage} open={showCurriculum} onClose={() => setShowCurriculum(false)} />
+              </>
             )}
           </div>
           {error && <div className="error" role="alert">{error}</div>}
