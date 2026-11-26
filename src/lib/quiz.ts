@@ -1,4 +1,4 @@
-import { complete, parseJsonLoose, AiError, type AiSettings } from './ai';
+import { budgetFor, complete, parseJsonLoose, AiError, type AiSettings } from './ai';
 import type { Source } from './extract';
 
 export const SUBJECTS = [
@@ -52,17 +52,70 @@ export interface QuizOptions {
   count: number;
 }
 
-/** Ungefär 60 000 tecken räcker till ett långt kapitel utan att bli dyrt. */
-const MAX_CHARS = 60000;
+/** Standardgräns för materialets längd i tecken (Anthropic). Andra leverantörer har lägre, se budgetFor. */
+export const MAX_CHARS = 60000;
 
-export function buildMaterial(sources: Source[]) {
-  let text = sources.map((s) => `### Källa: ${s.name}\n${s.text}`).join('\n\n');
-  let truncated = false;
-  if (text.length > MAX_CHARS) {
-    text = text.slice(0, MAX_CHARS);
-    truncated = true;
+export function buildMaterial(sources: Source[], maxChars = MAX_CHARS) {
+  const full = sources.map((s) => `### Källa: ${s.name}\n${s.text}`).join('\n\n');
+  if (full.length <= maxChars) return { text: full, truncated: false };
+  return { text: condense(full, maxChars), truncated: true };
+}
+
+/**
+ * Kortar en lång text genom att ta jämnt fördelade bitar från hela texten,
+ * så att quizet täcker början, mitten och slutet i stället för bara början.
+ */
+export function condense(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const sep = '\n[…]\n';
+  const pieces = Math.max(1, Math.min(10, Math.floor(maxChars / 1200)));
+  const pieceLen = Math.floor((maxChars - sep.length * (pieces - 1)) / pieces);
+  const step = (text.length - pieceLen) / Math.max(1, pieces - 1);
+  const out: string[] = [];
+  for (let i = 0; i < pieces; i++) {
+    let start = pieces === 1 ? 0 : Math.round(i * step);
+    // Börja helst vid en radbrytning så att bitarna inte startar mitt i ett ord.
+    const nl = text.lastIndexOf('\n', start);
+    if (nl >= 0 && start - nl < 300) start = nl + 1;
+    out.push(text.slice(start, start + pieceLen).trim());
   }
-  return { text, truncated };
+  return out.join(sep).slice(0, maxChars);
+}
+
+/** Väljer de stycken i materialet som har flest ord gemensamt med frågan. */
+export function relevantExcerpt(material: string, query: string, maxChars: number): string {
+  if (material.length <= maxChars) return material;
+  const words = (s: string) => new Set(s.toLowerCase().match(/[a-zåäöéü0-9]{4,}/g) ?? []);
+  const q = words(query);
+  const paras = material.split(/\n+/).filter((p) => p.trim());
+  const scored = paras.map((p, i) => {
+    let hits = 0;
+    for (const w of words(p)) if (q.has(w)) hits++;
+    return { i, p, hits };
+  });
+  const chosen = new Set<number>();
+  let used = 0;
+  for (const s of [...scored].sort((a, b) => b.hits - a.hits)) {
+    if (used + s.p.length + 1 > maxChars) continue;
+    chosen.add(s.i);
+    used += s.p.length + 1;
+  }
+  return scored.filter((s) => chosen.has(s.i)).map((s) => s.p).join('\n');
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Anropar AI:n och väntar och försöker igen en gång om minutgränsen nåtts och väntetiden är kort. */
+async function completeWithRetry(settings: AiSettings, system: string, user: string, maxTokens: number) {
+  try {
+    return await complete(settings, system, user, maxTokens);
+  } catch (e) {
+    if (e instanceof AiError && e.code === 'rate' && (e.info.retryAfter ?? 99) <= 30) {
+      await sleep(((e.info.retryAfter ?? 0) + 1) * 1000);
+      return complete(settings, system, user, maxTokens);
+    }
+    throw e;
+  }
 }
 
 const SYSTEM_QUIZ = `Du är en erfaren svensk grundskolelärare som gör quiz för att hjälpa elever att plugga.
@@ -77,7 +130,6 @@ Regler:
 Svara ENDAST med JSON.`;
 
 export async function generateQuiz(settings: AiSettings, sources: Source[], opts: QuizOptions): Promise<Quiz> {
-  const { text } = buildMaterial(sources);
   const nMc = opts.mix === 'mc' ? opts.count : opts.mix === 'free' ? 0 : Math.ceil(opts.count * 0.6);
   const nFree = opts.count - nMc;
   const subjectLine = opts.subject
@@ -100,10 +152,30 @@ Svara med JSON i exakt detta format:
 
 Elevens material:
 """
-${text}
-"""`;
+`;
 
-  const raw = await complete(settings, SYSTEM_QUIZ, user, 8000);
+  const budget = budgetFor(settings.provider);
+  let chars = budget.inputChars;
+  let outTokens = Math.min(budget.outputTokens, 600 + opts.count * 350);
+  let raw = '';
+  for (let attempt = 0; ; attempt++) {
+    const { text } = buildMaterial(sources, chars);
+    try {
+      raw = await completeWithRetry(settings, SYSTEM_QUIZ, `${user}${text}\n"""`, outTokens);
+      break;
+    } catch (e) {
+      if (!(e instanceof AiError) || e.code !== 'too_large' || attempt >= 2) {
+        if (e instanceof AiError && e.code === 'too_large') throw tooLargeError();
+        throw e;
+      }
+      // Krymp materialet så att det ryms inom tjänstens gräns och försök igen.
+      const { limit, requested } = e.info;
+      const ratio = limit && requested ? (limit / requested) * 0.8 : 0.5;
+      chars = Math.floor(Math.min(text.length, chars) * ratio);
+      if (limit) outTokens = Math.min(outTokens, Math.floor(limit * 0.4));
+      if (chars < 1500) throw tooLargeError();
+    }
+  }
   const parsed = parseJsonLoose<{ title?: string; subject?: string; questions?: unknown[] }>(raw);
   const questions = (parsed.questions ?? []).map(normalizeQuestion).filter((q): q is Question => q !== null);
   if (questions.length === 0) throw new AiError('AI:n kunde inte göra några frågor av materialet. Prova med mer text.');
@@ -115,6 +187,13 @@ ${text}
     createdAt: Date.now(),
     questions,
   };
+}
+
+function tooLargeError() {
+  return new AiError(
+    'Materialet är för långt för den här AI-tjänstens gräns. Prova färre frågor, ta bort någon källa eller byt till Anthropic under Inställningar.',
+    'too_large',
+  );
 }
 
 export function normalizeQuestion(q: unknown): Question | null {
@@ -170,14 +249,14 @@ ${answer}
 
 Utdrag ur materialet:
 """
-${materialExcerpt.slice(0, 15000)}
+${relevantExcerpt(materialExcerpt, `${q.question} ${q.modelAnswer} ${q.points.join(' ')}`, Math.min(15000, Math.floor(budgetFor(settings.provider).inputChars / 3)))}
 """
 
 Svara med JSON:
 {"verdict":"correct|partial|incorrect","pointsMet":[true,false,...],"feedback":"1-2 meningar om vad som var bra och vad som saknas","tip":"ett konkret tips om vad eleven kan läsa eller tänka på"}
 "pointsMet" ska ha ett värde per bedömningspunkt, i samma ordning.`;
 
-  const raw = await complete(settings, SYSTEM_GRADE, user, 1000);
+  const raw = await completeWithRetry(settings, SYSTEM_GRADE, user, 1000);
   const g = parseJsonLoose<Partial<Grade>>(raw);
   const verdict = g.verdict === 'correct' || g.verdict === 'partial' || g.verdict === 'incorrect' ? g.verdict : 'partial';
   const pointsMet = q.points.map((_, i) => Boolean(g.pointsMet?.[i]));

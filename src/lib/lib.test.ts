@@ -37,7 +37,8 @@ describe('buildMaterial', () => {
     const long = textSource('lång', 'ord '.repeat(30000));
     const { text, truncated } = buildMaterial([long]);
     expect(truncated).toBe(true);
-    expect(text.length).toBe(60000);
+    expect(text.length).toBeLessThanOrEqual(60000);
+    expect(text.length).toBeGreaterThan(55000);
   });
 });
 
@@ -84,5 +85,56 @@ describe('modellval', () => {
   });
   it('ger null om ingen rekommenderad modell finns', () => {
     expect(pickAvailableModel('groq', 'x', ['whisper-large-v3'])).toBeNull();
+  });
+});
+
+import { condense, relevantExcerpt, generateQuiz } from './quiz';
+import { isTooLarge, parseLimits } from './ai';
+import { vi } from 'vitest';
+
+describe('långt material', () => {
+  it('condense tar med början, mitten och slutet', () => {
+    const text = Array.from({ length: 300 }, (_, i) => `Rad ${i} ` + 'x'.repeat(80)).join('\n');
+    const out = condense(text, 5000);
+    expect(out.length).toBeLessThanOrEqual(5000);
+    expect(out).toContain('Rad 0 ');
+    expect(out).toMatch(/Rad 1\d\d /);
+    expect(out).toMatch(/Rad 2[0-8]\d /);
+    expect(out).toMatch(/Rad 29\d /);
+  });
+  it('relevantExcerpt väljer stycken som handlar om frågan', () => {
+    const material = ['Fotosyntesen sker i kloroplasterna.', 'Romarriket föll år 476.', 'Klorofyll fångar solljus i kloroplasterna.'].join('\n');
+    const out = relevantExcerpt(material, 'Var finns klorofyll och kloroplasterna?', 80);
+    expect(out).toContain('Klorofyll');
+    expect(out).not.toContain('Romarriket');
+  });
+  it('läser gränser ur Groqs felmeddelanden', () => {
+    const msg = 'Request too large for model `openai/gpt-oss-120b` in organization `org_x` service tier `on_demand` on tokens per minute (TPM): Limit 8000, Requested 9598, please reduce your message size and try again.';
+    expect(isTooLarge(413, msg)).toBe(true);
+    expect(parseLimits(msg)).toMatchObject({ limit: 8000, requested: 9598 });
+    expect(parseLimits('Rate limit reached ... Please try again in 7.2s.').retryAfter).toBe(8);
+    expect(isTooLarge(429, 'Rate limit reached for tokens per minute (TPM): Limit 8000, Used 6000, Requested 3000.')).toBe(false);
+  });
+});
+
+describe('generateQuiz med för stort material', () => {
+  it('krymper materialet och försöker igen när tjänsten säger att det är för stort', async () => {
+    const sizes: number[] = [];
+    const quiz = { title: 'T', subject: 'Biologi', questions: [{ type: 'mc', question: 'Q?', options: ['a', 'b', 'c', 'd'], correct: 0 }] };
+    const fetchMock = vi.fn(async (_url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body);
+      const len = body.messages[1].content.length;
+      sizes.push(len);
+      if (sizes.length === 1)
+        return new Response(JSON.stringify({ error: { message: 'Request too large ... (TPM): Limit 8000, Requested 9598, please reduce your message size' } }), { status: 413 });
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(quiz) } }] }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const src = textSource('Genetik', 'Gener och DNA. '.repeat(3000));
+    const q = await generateQuiz({ provider: 'groq', model: 'openai/gpt-oss-120b', keys: { groq: 'k' } }, [src], { subject: '', grade: 8, mix: 'mc', count: 10 });
+    vi.unstubAllGlobals();
+    expect(q.questions).toHaveLength(1);
+    expect(sizes).toHaveLength(2);
+    expect(sizes[1]).toBeLessThan(sizes[0] * 0.8);
   });
 });

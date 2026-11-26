@@ -51,10 +51,39 @@ export interface AiSettings {
   keys: Partial<Record<ProviderId, string>>;
 }
 
+export type AiErrorCode = 'model' | 'too_large' | 'rate' | 'other';
+
 export class AiError extends Error {
-  constructor(message: string, readonly code: 'model' | 'other' = 'other') {
+  constructor(
+    message: string,
+    readonly code: AiErrorCode = 'other',
+    readonly info: { limit?: number; requested?: number; retryAfter?: number } = {},
+  ) {
     super(message);
   }
+}
+
+/** Hur mycket material (tecken) och svar (tokens) vi skickar per leverantör. Groqs gratisnivå har låga gränser. */
+export function budgetFor(provider: ProviderId) {
+  if (provider === 'groq') return { inputChars: 10000, outputTokens: 3000 };
+  if (provider === 'openrouter') return { inputChars: 24000, outputTokens: 4000 };
+  return { inputChars: 60000, outputTokens: 8000 };
+}
+
+export function isTooLarge(status: number, msg: string) {
+  return status === 413 || /request too large|context length|maximum context|prompt is too long|reduce (your|the) (message|prompt) size/i.test(msg);
+}
+
+/** Läser ut "Limit 8000, Requested 9598" och "try again in 12.5s" ur felmeddelanden. */
+export function parseLimits(msg: string) {
+  const limit = msg.match(/limit[^0-9]{0,10}(\d+)/i);
+  const requested = msg.match(/requested[^0-9]{0,10}(\d+)/i);
+  const retry = msg.match(/try again in (?:(\d+)m)?([\d.]+)s/i);
+  return {
+    limit: limit ? Number(limit[1]) : undefined,
+    requested: requested ? Number(requested[1]) : undefined,
+    retryAfter: retry ? Math.ceil(Number(retry[1] ?? 0) * 60 + Number(retry[2])) : undefined,
+  };
 }
 
 export function isModelMissing(status: number, msg: string) {
@@ -107,9 +136,19 @@ export async function complete(settings: AiSettings, system: string, user: strin
   if (!res.ok) {
     const msg = data?.error?.message ?? data?.error ?? res.statusText;
     if (res.status === 401 || res.status === 403) throw new AiError('API-nyckeln godkändes inte. Kontrollera den i Inställningar.');
-    if (isModelMissing(res.status, String(msg)))
+    const text = String(msg);
+    if (isTooLarge(res.status, text))
+      throw new AiError('Materialet är för stort för den här AI-tjänsten.', 'too_large', parseLimits(text));
+    if (res.status === 429) {
+      const { retryAfter } = parseLimits(text);
+      throw new AiError(
+        `AI-tjänstens gräns för hur mycket som får skickas per minut är nådd. Vänta ${retryAfter ? `${retryAfter} sekunder` : 'en minut'} och försök igen.`,
+        'rate',
+        { retryAfter },
+      );
+    }
+    if (isModelMissing(res.status, text))
       throw new AiError(`Modellen ${model} finns inte eller är inte tillgänglig för din nyckel. Välj en annan modell i Inställningar.`, 'model');
-    if (res.status === 429) throw new AiError('För många anrop just nu. Vänta en stund och försök igen.');
     throw new AiError(`AI-tjänsten svarade med ett fel: ${typeof msg === 'string' ? msg : res.status}`);
   }
 
