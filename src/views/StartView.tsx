@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { AiSettings } from '../lib/ai';
+import { budgetFor, type AiSettings } from '../lib/ai';
 import { extractFile, extractLink, textSource, type Source } from '../lib/extract';
 import { generateQuiz, GRADES, SUBJECTS, stageFor, buildMaterial, type Quiz, type QuestionMix } from '../lib/quiz';
 import { CloseIcon, CurriculumIcon, UploadIcon } from '../icons';
@@ -86,7 +86,7 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
     }
   }
 
-  const truncated = sources.length > 0 && buildMaterial(sources).truncated;
+  const truncated = sources.length > 0 && buildMaterial(sources, budgetFor(settings.provider).inputChars).truncated;
 
   return (
     <main className="main">
@@ -175,7 +175,7 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
           ) : (
             <div><button className="btn secondary" onClick={() => setShowPaste(true)}>Klistra in text istället</button></div>
           )}
-          {truncated && <p className="small muted" style={{ margin: 0 }}>Materialet är långt, så quizet bygger på den första delen.</p>}
+          {truncated && <p className="small muted" style={{ margin: 0 }}>Materialet är långt, så quizet bygger på utvalda delar från hela texten.</p>}
         </section>
 
         <aside className="card side" aria-labelledby="settings-h">
