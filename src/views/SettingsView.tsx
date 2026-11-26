@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AiError, complete, listModels, pickAvailableModel, PROVIDERS, type AiSettings, type ProviderId } from '../lib/ai';
+import { AiError, API_URL, complete, listModels, pickAvailableModel, PROVIDERS, serverFetch, type AiSettings, type ProviderId } from '../lib/ai';
 import { clearAll, DEFAULT_SETTINGS } from '../lib/storage';
 import { CheckIcon } from '../icons';
 
@@ -29,10 +29,24 @@ export default function SettingsView({ settings, onChange }: Props) {
     setStatus(null);
   };
 
+  async function testServer() {
+    const info = await serverFetch<{ provider: ProviderId; model: string; configured: boolean }>(draft, '/api/info');
+    if (!info.configured) throw new AiError('Skolans server saknar AI-nyckel än. Be läraren lägga in den.');
+    const next: AiSettings = { ...draft, provider: info.provider, model: info.model };
+    await complete(next, 'Svara bara med ordet OK.', 'Test', 300);
+    setDraft(next);
+    onChange(next);
+    setStatus({ kind: 'ok', text: 'Anslutningen till skolans server fungerar. Sparat.' });
+  }
+
   async function test() {
     setTesting(true);
     setStatus(null);
     try {
+      if (draft.mode === 'server') {
+        await testServer();
+        return;
+      }
       let model = draft.model;
       let switched = false;
       try {
@@ -69,9 +83,49 @@ export default function SettingsView({ settings, onChange }: Props) {
     <main className="main narrow">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <h1>Inställningar</h1>
-        <p className="lead">Välj vilken AI som gör dina quiz. Nyckeln sparas bara i den här webbläsaren.</p>
+        <p className="lead">Välj hur appen ska nå AI:n som gör dina quiz.</p>
       </div>
 
+      {API_URL && (
+        <section className="card" aria-labelledby="mode-h">
+          <h2 id="mode-h">Anslutning</h2>
+          <div className="providers">
+            <button className="provider" aria-pressed={draft.mode === 'server'} onClick={() => { setDraft({ ...draft, mode: 'server' }); setStatus(null); }}>
+              <strong>Skolans server</strong>
+              <span>Du behöver bara klasskoden från din lärare.</span>
+            </button>
+            <button className="provider" aria-pressed={draft.mode !== 'server'} onClick={() => { setDraft({ ...draft, mode: 'own', provider: draft.provider, model: draft.model }); setStatus(null); }}>
+              <strong>Egen API-nyckel</strong>
+              <span>För vuxna som har ett eget konto hos en AI-tjänst.</span>
+            </button>
+          </div>
+          {draft.mode === 'server' && (
+            <>
+              <div className="field">
+                <label htmlFor="klasskod">Klasskod</label>
+                <input
+                  id="klasskod"
+                  className="input"
+                  autoComplete="off"
+                  placeholder="T.ex. 7B-HOST"
+                  value={draft.classCode ?? ''}
+                  onChange={(e) => setDraft({ ...draft, classCode: e.target.value.trim().toUpperCase() })}
+                />
+              </div>
+              <div className="inline" style={{ alignItems: 'center', gap: 12 }}>
+                <button className="btn" onClick={() => { onChange(draft); setStatus({ kind: 'saved', text: 'Sparat' }); }}>Spara</button>
+                <button className="btn secondary" onClick={test} disabled={testing}>
+                  {testing ? <><span className="spinner dark" /> Testar…</> : 'Testa anslutningen'}
+                </button>
+                {status && status.kind !== 'error' && <span className="ok-text" role="status"><CheckIcon size={18} /> {status.text}</span>}
+              </div>
+              {status?.kind === 'error' && <div className="error" role="alert">{status.text}</div>}
+            </>
+          )}
+        </section>
+      )}
+
+      {draft.mode !== 'server' && (
       <section className="card" aria-labelledby="ai-h">
         <h2 id="ai-h">AI-leverantör</h2>
         <div className="providers">
@@ -130,6 +184,8 @@ export default function SettingsView({ settings, onChange }: Props) {
         </div>
         {status?.kind === 'error' && <div className="error" role="alert">{status.text}</div>}
       </section>
+
+      )}
 
       <section className="card" aria-labelledby="data-h">
         <h2 id="data-h">Mina data</h2>

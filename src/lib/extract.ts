@@ -1,5 +1,6 @@
 // Läser ut text ur uppladdade filer direkt i webbläsaren.
 import JSZip from 'jszip';
+import { serverFetch, type AiSettings } from './ai';
 
 export interface Source {
   id: string;
@@ -96,7 +97,7 @@ async function extractPdf(file: File): Promise<Source> {
  * Webblänkar: utan egen backend kan webbläsaren bara läsa sidor som tillåter det.
  * Wikipedia har ett öppet API, så det stöds redan nu.
  */
-export async function extractLink(url: string): Promise<Source> {
+export async function extractLink(url: string, settings?: AiSettings): Promise<Source> {
   let u: URL;
   try {
     u = new URL(url.trim());
@@ -115,8 +116,12 @@ export async function extractLink(url: string): Promise<Source> {
     const text = page.extract.trim();
     return { id: newId(), name: `Wikipedia: ${page.title}`, kind: 'link', text, summary: `${countWords(text)} ord inlästa` };
   }
+  if (settings?.mode === 'server') {
+    const page = await serverFetch<{ title: string; text: string }>(settings, `/api/fetch-url?url=${encodeURIComponent(u.toString())}`);
+    return { id: newId(), name: page.title || u.hostname, kind: 'link', text: page.text, summary: `${countWords(page.text)} ord inlästa` };
+  }
   throw new Error(
-    'Just nu fungerar bara länkar till Wikipedia. Andra webbsidor kommer när appen får en egen server. Du kan kopiera texten och klistra in den istället.',
+    'Med egen API-nyckel fungerar bara länkar till Wikipedia. Välj Skolans server under Inställningar för andra webbsidor, eller kopiera texten och klistra in den.',
   );
 }
 

@@ -45,7 +45,7 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const hasKey = Boolean(settings.keys[settings.provider]);
+  const hasKey = settings.mode === 'server' || Boolean(settings.keys[settings.provider]);
 
   async function addFiles(files: FileList | File[]) {
     setError('');
@@ -68,7 +68,7 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
     if (!link.trim()) return;
     setError('');
     try {
-      const s = await extractLink(link);
+      const s = await extractLink(link, settings);
       setSources([...sources, s]);
       setLink('');
     } catch (e) {
@@ -173,7 +173,7 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
               />
               <button className="btn secondary" onClick={addLink}>Lägg till</button>
             </div>
-            <span className="small muted">Just nu fungerar länkar till Wikipedia.</span>
+            <span className="small muted">{settings.mode === 'server' ? 'Fungerar med de flesta öppna webbsidor.' : 'Med egen nyckel fungerar länkar till Wikipedia.'}</span>
           </div>
 
           {showPaste ? (
