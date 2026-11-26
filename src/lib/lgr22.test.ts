@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { criteriaForGrade, parseCentralContent, plain, simplifySubject, stageForGrade } from './lgr22-parse';
-import { matchHeading } from './curriculum';
+import { criteriaForGrade, parseCentralContent, plain, shortHeading, simplifyGySubject, simplifySubject, stageForGrade, type ApiGySubject } from './lgr22-parse';
+import { GY_GRADE, matchHeading, schoolOf, stageForLevel } from './curriculum';
+import { levelLabel } from './quiz';
 
 // Utdrag i samma form som Skolverkets Syllabus-API (religionskunskap).
 const REL_79 =
@@ -71,5 +72,63 @@ describe('Lgr22-tolkning', () => {
     expect(matchHeading('etik och livsfrågor', h)).toBe('Etik och livsfrågor');
     expect(matchHeading('Religioner', h)).toBe('Religioner och andra livsåskådningar');
     expect(matchHeading('Något annat', h)).toBe('Något annat');
+  });
+});
+
+describe('gymnasiets ämnesplaner', () => {
+  const api: ApiGySubject = {
+    code: 'MATE',
+    name: 'Matematik',
+    version: '1',
+    modifiedDate: '2025-12-19',
+    courses: [
+      {
+        code: 'MATE1C00X',
+        name: 'Nivå 1c',
+        centralContent: {
+          text: '<p>Undervisningen i ämnet matematik på nivå 1c ska behandla följande centrala innehåll:</p> <p><em>Aritmetik, algebra och funktioner</em></p> <ul> <li>Hantering av formler.</li> <li>Begreppet funktion.</li> </ul> <p><em>Trigonometri och vektorer</em></p> <ul> <li>Begreppen sinus, cosinus och tangens.</li> </ul>',
+        },
+      },
+      { code: 'MATE2C00X', name: 'Nivå 2c', centralContent: { text: '<p>Undervisningen ska behandla:</p> <ul> <li>Andragradsekvationer.</li> </ul>' } },
+      { code: 'TOM', name: 'Tom nivå', centralContent: { text: '<p></p>' } },
+    ],
+    knowledgeRequirements: [
+      { gradeStep: 'E', text: '<h4><i>Betyget E</i></h4><p>Eleven använder begrepp med <strong>godtagbar</strong> säkerhet.</p>' },
+      { gradeStep: 'D', text: '<h4><i>Betyget D</i></h4><p>Mellan C och E.</p>' },
+      { gradeStep: 'A', text: '<h4><i>Betyget A</i></h4><p>Eleven använder begrepp med <strong>mycket god</strong> säkerhet.</p>' },
+    ],
+  };
+
+  it('gör varje nivå till ett stadium med kursiva rubriker som områden', () => {
+    const s = simplifyGySubject(api);
+    expect(s.stages.map((x) => x.years)).toEqual(['Nivå 1c', 'Nivå 2c']);
+    expect(s.stages[0].areas).toEqual([
+      { heading: 'Aritmetik, algebra och funktioner', items: ['Hantering av formler.', 'Begreppet funktion.'] },
+      { heading: 'Trigonometri och vektorer', items: ['Begreppen sinus, cosinus och tangens.'] },
+    ]);
+    expect(s.stages[1].areas).toEqual([{ heading: 'Andragradsekvationer', items: ['Andragradsekvationer.'] }]);
+  });
+
+  it('gör korta rubriker av punkter när nivån saknar delrubriker', () => {
+    expect(shortHeading('Läsning av och samtal om sakprosa. Produktion av texter som anknyter till läst sakprosa.')).toBe('Läsning av och samtal om sakprosa');
+    const long = shortHeading('Muntlig framställning i och inför grupp med fokus på anpassning till sammanhang, syfte och mottagare. Manus.');
+    expect(long.length).toBeLessThanOrEqual(82);
+    expect(long.endsWith(' …')).toBe(true);
+  });
+
+  it('behåller betygskriterierna E, C och A utan rubriker', () => {
+    const s = simplifyGySubject(api);
+    expect(s.criteria.map((c) => c.level)).toEqual(['E', 'A']);
+    expect(s.criteria[0]).toEqual({ year: 'GY', level: 'E', text: 'Eleven använder begrepp med godtagbar säkerhet.' });
+  });
+
+  it('väljer nivå och visar gymnasiet i etiketter', () => {
+    const s = simplifyGySubject(api);
+    expect(stageForLevel(s, 'Nivå 2c')?.years).toBe('Nivå 2c');
+    expect(stageForLevel(s, 'finns inte')?.years).toBe('Nivå 1c');
+    expect(levelLabel(GY_GRADE, 'Nivå 1c')).toBe('gymnasiet, nivå 1c');
+    expect(levelLabel(8)).toBe('åk 8');
+    expect(schoolOf(9)).toBe('GR');
+    expect(schoolOf(GY_GRADE)).toBe('GY');
   });
 });

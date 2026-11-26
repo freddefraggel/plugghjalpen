@@ -22,6 +22,8 @@ npm run build    # typkontroll och produktionsbygge i dist/
 
 `npm run lgr22` (`scripts/fetch-lgr22.ts`) hämtar grundskolans kursplaner från Skolverkets öppna [Syllabus-API](https://www.skolverket.se/om-oss/oppna-data/api-for-laroplaner-kurs--och-amnesplaner-syllabus) och sparar en förenklad version i `public/lgr22/`: centralt innehåll per stadium (rubriker och punkter) och kunskapskrav. API:t tillåter inte anrop direkt från webbläsare, så datan hämtas när sajten byggs i GitHub Actions, och varje måndag byggs sajten om för att få med eventuella ändringar. Mappen ligger inte i git.
 
+Samma skript hämtar också gymnasiets nya ämnesplaner (GY25, ämnesbetyg med nivåer) till `public/lgr22/gy/`: de 90 gymnasiegemensamma och högskoleförberedande ämnena ("Kapitel 4-ämnen"), inte yrkesämnena. Väljer eleven "Gymnasiet" i stället för en årskurs får hen välja ämne och nivå (t.ex. Matematik, nivå 1c). AI:n får då nivåns centrala innehåll, och resultatsidan visar ämnets betygskriterier för E, C och A. Saknar en nivå delrubriker blir varje punkt ett eget område.
+
 När ett ämne är valt får AI:n hela det centrala innehållet för stadiet och måste märka varje fråga med en av Skolverkets rubriker. Gissar appen ämnet får AI:n rubrikerna för alla ämnen. Resultatsidan visar kunskapskraven (E, C, A) för slutet av stadiet. Saknas datan faller appen tillbaka på AI:ns egen kunskap.
 
 ## Backend för eleverna (`worker/`)

@@ -1,6 +1,6 @@
 import { budgetFor, complete, parseJsonLoose, AiError, type AiSettings } from './ai';
 import type { Source } from './extract';
-import { curriculumContext, matchHeading } from './curriculum';
+import { curriculumContext, GY_GRADE, matchHeading, schoolOf } from './curriculum';
 
 export const SUBJECTS = [
   'Biologi', 'Fysik', 'Kemi', 'Teknik', 'Matematik', 'Svenska', 'Svenska som andraspråk', 'Engelska',
@@ -8,10 +8,24 @@ export const SUBJECTS = [
   'Idrott och hälsa', 'Musik', 'Bild', 'Slöjd',
 ];
 
-export const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+/** 1–9 är grundskolans årskurser, 10 (GY_GRADE) är gymnasiet. */
+export const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, GY_GRADE];
 
 export function stageFor(grade: number) {
-  return grade <= 3 ? 'åk 1–3' : grade <= 6 ? 'åk 4–6' : 'åk 7–9';
+  return grade >= GY_GRADE ? 'gymnasiet' : grade <= 3 ? 'åk 1–3' : grade <= 6 ? 'åk 4–6' : 'åk 7–9';
+}
+
+/** Kort text om årskurs eller gymnasienivå, t.ex. "åk 7" eller "gymnasiet, nivå 1c". */
+export function levelLabel(grade: number, level?: string) {
+  if (grade < GY_GRADE) return `åk ${grade}`;
+  return level ? `gymnasiet, ${level.toLowerCase()}` : 'gymnasiet';
+}
+
+/** Rad till AI:n om elevens nivå. */
+function levelLine(grade: number, level?: string) {
+  return grade >= GY_GRADE
+    ? `Skolform: gymnasieskolan${level ? `, ${level.toLowerCase()}` : ''}`
+    : `Årskurs: ${grade} (${stageFor(grade)})`;
 }
 
 export type QuestionMix = 'mc' | 'free' | 'mixed';
@@ -42,6 +56,8 @@ export interface Quiz {
   title: string;
   subject: string;
   grade: number;
+  /** Gymnasiet: vald nivå i ämnet, t.ex. "Nivå 1c". */
+  level?: string;
   createdAt: number;
   questions: Question[];
   /** Varifrån områdena kommer, t.ex. "Skolverkets kursplan i biologi, centralt innehåll åk 7–9". Saknas = AI:ns egen bedömning. */
@@ -51,6 +67,7 @@ export interface Quiz {
 export interface QuizOptions {
   subject: string; // '' = låt AI gissa
   grade: number;
+  level?: string;
   mix: QuestionMix;
   count: number;
 }
@@ -121,13 +138,13 @@ async function completeWithRetry(settings: AiSettings, system: string, user: str
   }
 }
 
-const SYSTEM_QUIZ = `Du är en erfaren svensk grundskolelärare som gör quiz för att hjälpa elever att plugga.
+const SYSTEM_QUIZ = `Du är en erfaren svensk lärare som gör quiz för att hjälpa elever att plugga.
 Regler:
 - Bygg varje fråga ENBART på elevens material. Hitta inte på fakta som inte finns där.
-- Skriv på enkel, tydlig svenska anpassad för årskursen.
+- Skriv på tydlig svenska anpassad för elevens årskurs eller gymnasienivå: enkla ord och korta meningar för de yngsta, ämnesbegrepp och mer krävande resonemang högre upp.
 - Flervalsfrågor har exakt 4 svarsalternativ, ett rätt, och tre rimliga men felaktiga.
 - Fritextfrågor ska kräva att eleven förklarar eller resonerar, inte bara nämner ett ord.
-- "area" är det område i det centrala innehållet i Lgr22 (Skolverkets kursplan för ämnet och stadiet) som frågan bäst hör till, skrivet kort, t.ex. "Fotosyntes och förbränning".
+- "area" är det område i det centrala innehållet (Skolverkets kursplan i Lgr22, eller ämnesplan för gymnasiet) som frågan bäst hör till, skrivet kort, t.ex. "Fotosyntes och förbränning".
 - "source" anger var i materialet svaret finns, t.ex. "Fotosyntesen.pptx, bild 5".
 Svara ENDAST med JSON.`;
 
@@ -136,15 +153,15 @@ export async function generateQuiz(settings: AiSettings, sources: Source[], opts
   const nFree = opts.count - nMc;
   const subjectLine = opts.subject
     ? `Ämne: ${opts.subject}`
-    : 'Ämne: avgör själv vilket grundskoleämne materialet hör till och ange det i "subject".';
+    : `Ämne: avgör själv vilket ${schoolOf(opts.grade) === 'GY' ? 'gymnasieämne' : 'grundskoleämne'} materialet hör till och ange det i "subject".`;
 
-  const cur = await curriculumContext(opts.subject, opts.grade);
+  const cur = await curriculumContext(opts.subject, opts.grade, opts.level);
   const curriculumRules = cur.headings.length
     ? `\n${cur.prompt}\n\nVIKTIGT: "area" ska vara EXAKT en av rubrikerna ovan (${opts.subject ? 'efter ##' : 'för det ämne du väljer'}), ordagrant. Välj den rubrik vars punkter frågan bäst övar på.\n`
     : '';
 
   const user = `${subjectLine}
-Årskurs: ${opts.grade} (${stageFor(opts.grade)})
+${levelLine(opts.grade, opts.level)}
 Gör ${nMc} flervalsfrågor och ${nFree} fritextfrågor.
 ${curriculumRules}
 Svara med JSON i exakt detta format:
@@ -196,6 +213,7 @@ Elevens material:
     title: parsed.title?.trim() || sources[0]?.name || 'Quiz',
     subject: opts.subject || parsed.subject?.trim() || 'Okänt ämne',
     grade: opts.grade,
+    ...(opts.level && opts.grade >= GY_GRADE ? { level: opts.level } : {}),
     createdAt: Date.now(),
     questions,
     curriculumLabel: cur.label ?? undefined,
@@ -246,9 +264,9 @@ export interface Grade {
   tip: string;
 }
 
-const SYSTEM_GRADE = `Du rättar en grundskoleelevs fritextsvar. Var vänlig, uppmuntrande och konkret.
-Bedöm innehållet, inte stavning. Jämför med bedömningspunkterna och materialet.
-Skriv på enkel svenska riktad direkt till eleven ("du").
+const SYSTEM_GRADE = `Du rättar en elevs fritextsvar. Var vänlig, uppmuntrande och konkret.
+Bedöm innehållet, inte stavning. Jämför med bedömningspunkterna och materialet, och ställ krav som passar elevens årskurs eller gymnasienivå.
+Skriv på tydlig svenska, anpassad till elevens ålder, riktad direkt till eleven ("du").
 Svara ENDAST med JSON.`;
 
 export async function gradeAnswer(
@@ -257,8 +275,10 @@ export async function gradeAnswer(
   answer: string,
   grade: number,
   materialExcerpt: string,
+  level?: string,
 ): Promise<Grade> {
-  const user = `Årskurs: ${grade}
+  const user = `${levelLine(grade, level)}
+Bedöm utifrån vad som är rimligt att kräva på den nivån.
 Fråga: ${q.question}
 Exempel på bra svar: ${q.modelAnswer}
 Bedömningspunkter:
