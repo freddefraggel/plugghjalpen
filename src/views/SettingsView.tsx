@@ -1,0 +1,124 @@
+import { useState } from 'react';
+import { complete, PROVIDERS, type AiSettings, type ProviderId } from '../lib/ai';
+import { clearAll, DEFAULT_SETTINGS } from '../lib/storage';
+import { CheckIcon } from '../icons';
+
+interface Props {
+  settings: AiSettings;
+  onChange: (s: AiSettings) => void;
+}
+
+export default function SettingsView({ settings, onChange }: Props) {
+  const [draft, setDraft] = useState<AiSettings>(settings);
+  const [status, setStatus] = useState<{ kind: 'ok' | 'error' | 'saved'; text: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+  const provider = PROVIDERS.find((p) => p.id === draft.provider)!;
+  const modelKnown = provider.models.some((m) => m.id === draft.model);
+
+  const pickProvider = (id: ProviderId) => {
+    const p = PROVIDERS.find((x) => x.id === id)!;
+    setDraft({ ...draft, provider: id, model: p.models[0].id });
+    setStatus(null);
+  };
+
+  async function test() {
+    setTesting(true);
+    setStatus(null);
+    try {
+      await complete(draft, 'Svara bara med ordet OK.', 'Test', 20);
+      setStatus({ kind: 'ok', text: 'Anslutningen fungerar' });
+    } catch (e) {
+      setStatus({ kind: 'error', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <main className="main narrow">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <h1>Inställningar</h1>
+        <p className="lead">Välj vilken AI som gör dina quiz. Nyckeln sparas bara i den här webbläsaren.</p>
+      </div>
+
+      <section className="card" aria-labelledby="ai-h">
+        <h2 id="ai-h">AI-leverantör</h2>
+        <div className="providers">
+          {PROVIDERS.map((p) => (
+            <button key={p.id} className="provider" aria-pressed={draft.provider === p.id} onClick={() => pickProvider(p.id)}>
+              <strong>{p.name}</strong>
+              <span>{p.blurb}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="field">
+          <label htmlFor="modell">Modell</label>
+          <select
+            id="modell"
+            className="input"
+            value={modelKnown ? draft.model : '__custom'}
+            onChange={(e) => setDraft({ ...draft, model: e.target.value === '__custom' ? '' : e.target.value })}
+          >
+            {provider.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            <option value="__custom">Annan modell…</option>
+          </select>
+          {!modelKnown && (
+            <input
+              className="input"
+              aria-label="Modellens namn"
+              placeholder="Modellens id, t.ex. från leverantörens dokumentation"
+              value={draft.model}
+              onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+            />
+          )}
+        </div>
+
+        <div className="field">
+          <label htmlFor="nyckel">API-nyckel</label>
+          <input
+            id="nyckel"
+            className="input"
+            type="password"
+            autoComplete="off"
+            placeholder={provider.keyHint}
+            value={draft.keys[draft.provider] ?? ''}
+            onChange={(e) => setDraft({ ...draft, keys: { ...draft.keys, [draft.provider]: e.target.value.trim() } })}
+          />
+          <span className="small muted">
+            Skapa en nyckel på <a href={provider.keyUrl} target="_blank" rel="noreferrer">{new URL(provider.keyUrl).hostname}</a>. Dela inte nyckeln med någon.
+          </span>
+        </div>
+
+        <div className="inline" style={{ alignItems: 'center', gap: 12 }}>
+          <button className="btn" onClick={() => { onChange(draft); setStatus({ kind: 'saved', text: 'Sparat' }); }}>Spara</button>
+          <button className="btn secondary" onClick={test} disabled={testing || !draft.keys[draft.provider]}>
+            {testing ? <><span className="spinner dark" /> Testar…</> : 'Testa anslutningen'}
+          </button>
+          {status && status.kind !== 'error' && <span className="ok-text" role="status"><CheckIcon size={18} /> {status.text}</span>}
+        </div>
+        {status?.kind === 'error' && <div className="error" role="alert">{status.text}</div>}
+      </section>
+
+      <section className="card" aria-labelledby="data-h">
+        <h2 id="data-h">Mina data</h2>
+        <p style={{ margin: 0, color: 'var(--ink-2)' }}>
+          Dina quiz och resultat sparas bara på den här datorn. Ditt material skickas till AI-leverantören när quizet skapas och när fritextsvar rättas.
+        </p>
+        <div>
+          <button
+            className="btn danger"
+            onClick={() => {
+              clearAll();
+              setDraft(DEFAULT_SETTINGS);
+              onChange(DEFAULT_SETTINGS);
+              setStatus({ kind: 'saved', text: 'Allt sparat är raderat' });
+            }}
+          >
+            Radera allt sparat
+          </button>
+        </div>
+      </section>
+    </main>
+  );
+}
