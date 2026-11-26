@@ -1,5 +1,6 @@
 import { budgetFor, complete, parseJsonLoose, AiError, type AiSettings } from './ai';
 import type { Source } from './extract';
+import { curriculumContext, matchHeading } from './curriculum';
 
 export const SUBJECTS = [
   'Biologi', 'Fysik', 'Kemi', 'Teknik', 'Matematik', 'Svenska', 'Svenska som andraspråk', 'Engelska',
@@ -43,6 +44,8 @@ export interface Quiz {
   grade: number;
   createdAt: number;
   questions: Question[];
+  /** Varifrån områdena kommer, t.ex. "Skolverkets kursplan i biologi, centralt innehåll åk 7–9". Saknas = AI:ns egen bedömning. */
+  curriculumLabel?: string;
 }
 
 export interface QuizOptions {
@@ -123,7 +126,6 @@ Regler:
 - Bygg varje fråga ENBART på elevens material. Hitta inte på fakta som inte finns där.
 - Skriv på enkel, tydlig svenska anpassad för årskursen.
 - Flervalsfrågor har exakt 4 svarsalternativ, ett rätt, och tre rimliga men felaktiga.
-- Variera var det rätta svaret står.
 - Fritextfrågor ska kräva att eleven förklarar eller resonerar, inte bara nämner ett ord.
 - "area" är det område i det centrala innehållet i Lgr22 (Skolverkets kursplan för ämnet och stadiet) som frågan bäst hör till, skrivet kort, t.ex. "Fotosyntes och förbränning".
 - "source" anger var i materialet svaret finns, t.ex. "Fotosyntesen.pptx, bild 5".
@@ -136,10 +138,15 @@ export async function generateQuiz(settings: AiSettings, sources: Source[], opts
     ? `Ämne: ${opts.subject}`
     : 'Ämne: avgör själv vilket grundskoleämne materialet hör till och ange det i "subject".';
 
+  const cur = await curriculumContext(opts.subject, opts.grade);
+  const curriculumRules = cur.headings.length
+    ? `\n${cur.prompt}\n\nVIKTIGT: "area" ska vara EXAKT en av rubrikerna ovan (${opts.subject ? 'efter ##' : 'för det ämne du väljer'}), ordagrant. Välj den rubrik vars punkter frågan bäst övar på.\n`
+    : '';
+
   const user = `${subjectLine}
 Årskurs: ${opts.grade} (${stageFor(opts.grade)})
 Gör ${nMc} flervalsfrågor och ${nFree} fritextfrågor.
-
+${curriculumRules}
 Svara med JSON i exakt detta format:
 {
   "title": "kort rubrik på materialet",
@@ -155,7 +162,7 @@ Elevens material:
 `;
 
   const budget = budgetFor(settings.provider);
-  let chars = budget.inputChars;
+  let chars = Math.max(2000, budget.inputChars - curriculumRules.length);
   let outTokens = Math.min(budget.outputTokens, 600 + opts.count * 350);
   let raw = '';
   for (let attempt = 0; ; attempt++) {
@@ -177,7 +184,12 @@ Elevens material:
     }
   }
   const parsed = parseJsonLoose<{ title?: string; subject?: string; questions?: unknown[] }>(raw);
-  const questions = (parsed.questions ?? []).map(normalizeQuestion).filter((q): q is Question => q !== null);
+  const questions = (parsed.questions ?? [])
+    .map(normalizeQuestion)
+    .filter((q): q is Question => q !== null)
+    .map((q) => ({ ...q, area: matchHeading(q.area, cur.headings) }))
+    // AI-modeller lägger ofta rätt svar först, så blanda alternativen här i stället för att lita på prompten.
+    .map((q) => (q.type === 'mc' ? shuffleOptions(q) : q));
   if (questions.length === 0) throw new AiError('AI:n kunde inte göra några frågor av materialet. Prova med mer text.');
   return {
     id: Math.random().toString(36).slice(2, 10),
@@ -186,6 +198,7 @@ Elevens material:
     grade: opts.grade,
     createdAt: Date.now(),
     questions,
+    curriculumLabel: cur.label ?? undefined,
   };
 }
 
@@ -194,6 +207,16 @@ function tooLargeError() {
     'Materialet är för långt för den här AI-tjänstens gräns. Prova färre frågor, ta bort någon källa eller byt till Anthropic under Inställningar.',
     'too_large',
   );
+}
+
+/** Blandar svarsalternativen och flyttar markeringen av rätt svar med dem. */
+export function shuffleOptions(q: McQuestion, random: () => number = Math.random): McQuestion {
+  const order = q.options.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return { ...q, options: order.map((i) => q.options[i]), correct: order.indexOf(q.correct) };
 }
 
 export function normalizeQuestion(q: unknown): Question | null {

@@ -138,3 +138,21 @@ describe('generateQuiz med för stort material', () => {
     expect(sizes[1]).toBeLessThan(sizes[0] * 0.8);
   });
 });
+
+import { shuffleOptions, type McQuestion } from './quiz';
+
+describe('shuffleOptions', () => {
+  const q: McQuestion = { type: 'mc', question: 'Q', options: ['rätt', 'fel1', 'fel2', 'fel3'], correct: 0, explanation: '', source: '', area: '' };
+  it('behåller rätt svar när alternativen blandas', () => {
+    for (let n = 0; n < 50; n++) {
+      const s = shuffleOptions(q);
+      expect(s.options[s.correct]).toBe('rätt');
+      expect([...s.options].sort()).toEqual([...q.options].sort());
+    }
+  });
+  it('sprider rätt svar över alla platser', () => {
+    const seen = new Set<number>();
+    for (let n = 0; n < 200; n++) seen.add(shuffleOptions(q).correct);
+    expect(seen).toEqual(new Set([0, 1, 2, 3]));
+  });
+});

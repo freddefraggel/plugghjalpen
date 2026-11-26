@@ -1,8 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { budgetFor, type AiSettings } from '../lib/ai';
 import { extractFile, extractLink, textSource, type Source } from '../lib/extract';
 import { generateQuiz, GRADES, SUBJECTS, stageFor, buildMaterial, type Quiz, type QuestionMix } from '../lib/quiz';
 import { CloseIcon, CurriculumIcon, UploadIcon } from '../icons';
+import { loadSubject } from '../lib/curriculum';
+import { stageForGrade, type Lgr22Stage } from '../lib/lgr22-parse';
 
 interface Props {
   settings: AiSettings;
@@ -27,6 +29,15 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
   const [showPaste, setShowPaste] = useState(false);
   const [subject, setSubject] = useState('');
   const [grade, setGrade] = useState(7);
+  const [stage, setStage] = useState<Lgr22Stage | null>(null);
+
+  // Hämta Skolverkets centrala innehåll för valt ämne och årskurs, om datan finns.
+  useEffect(() => {
+    let alive = true;
+    setStage(null);
+    if (subject) loadSubject(subject).then((s) => alive && setStage((s && stageForGrade(s, grade)) ?? null));
+    return () => { alive = false; };
+  }, [subject, grade]);
   const [mix, setMix] = useState<QuestionMix>('mixed');
   const [count, setCount] = useState(10);
   const [error, setError] = useState('');
@@ -205,9 +216,28 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
             <label htmlFor="antal">Antal frågor: {count}</label>
             <input id="antal" type="range" min={5} max={20} value={count} onChange={(e) => setCount(Number(e.target.value))} style={{ accentColor: 'var(--accent)' }} />
           </div>
-          <div className="note">
-            <CurriculumIcon />
-            <span>Frågorna kopplas till centralt innehåll i Lgr22 för {subject ? subject.toLowerCase() : 'ämnet'} {stageFor(grade)}.</span>
+          <div className="note" style={{ flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <CurriculumIcon />
+              <span>
+                {stage
+                  ? `Frågorna kopplas till centralt innehåll i Skolverkets kursplan för ${subject.toLowerCase()} åk ${stage.years.replace('-', '–')}.`
+                  : `Frågorna kopplas till centralt innehåll i Lgr22 för ${subject ? subject.toLowerCase() : 'ämnet'} ${stageFor(grade)}.`}
+              </span>
+            </div>
+            {stage && (
+              <details>
+                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Se centralt innehåll</summary>
+                {stage.areas.map((a) => (
+                  <div key={a.heading} style={{ marginTop: 10 }}>
+                    <strong style={{ fontWeight: 600 }}>{a.heading}</strong>
+                    <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                      {a.items.map((i) => <li key={i}>{i}</li>)}
+                    </ul>
+                  </div>
+                ))}
+              </details>
+            )}
           </div>
           {error && <div className="error" role="alert">{error}</div>}
           <button className="btn big" disabled={sources.length === 0 || busy} onClick={create}>
