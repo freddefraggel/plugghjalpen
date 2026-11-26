@@ -1,0 +1,20 @@
+# Plugghjälpens backend. Publiceras av .github/workflows/worker.yml.
+name = "plugghjalpen-api"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[vars]
+AI_PROVIDER = "anthropic"
+AI_MODEL = "claude-haiku-5-5"
+ALLOWED_ORIGINS = "https://freddefraggel.github.io,http://localhost:5173,http://localhost:4173"
+DAILY_LIMIT_DEVICE = "60"
+DAILY_LIMIT_CODE = "2000"
+# Hemligheter (sätts av GitHub Actions, aldrig i den här filen): AI_API_KEY, CLASS_CODES
+
+[[durable_objects.bindings]]
+name = "QUOTA"
+class_name = "Quota"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Quota"]

@@ -32,6 +32,9 @@ jobs:
         # Om Skolverkets API inte svarar byggs appen ändå; då används AI:ns egen kunskap om läroplanen.
         run: npm run lgr22 || echo "::warning::Kunde inte hämta kursplaner från Skolverket"
       - run: npm run build
+        env:
+          # Adressen till backenden (Cloudflare Worker). Sätts som repo-variabel API_URL.
+          VITE_API_URL: ${{ vars.API_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

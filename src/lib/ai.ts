@@ -46,12 +46,15 @@ export const PROVIDERS: ProviderInfo[] = [
 ];
 
 export interface AiSettings {
+  /** "server" = skolans backend håller nyckeln; "own" = egen nyckel i webbläsaren. */
+  mode?: 'own' | 'server';
+  classCode?: string;
   provider: ProviderId;
   model: string;
   keys: Partial<Record<ProviderId, string>>;
 }
 
-export type AiErrorCode = 'model' | 'too_large' | 'rate' | 'other';
+export type AiErrorCode = 'model' | 'too_large' | 'rate' | 'class_code' | 'quota' | 'other';
 
 export class AiError extends Error {
   constructor(
@@ -91,7 +94,58 @@ export function isModelMissing(status: number, msg: string) {
 }
 
 /** Skickar en prompt och returnerar modellens svar som text. */
+/** Adressen till skolans backend, satt vid bygget (VITE_API_URL). Tom = ingen backend. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const API_URL: string = ((import.meta as any).env?.VITE_API_URL ?? '').replace(/\/$/, '');
+
+export function deviceId(): string {
+  try {
+    // localStorage finns bara i webbläsaren, inte i backenden som också använder den här filen.
+    const store = (globalThis as { localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void } }).localStorage!;
+    let id = store.getItem('plugghjalpen.device');
+    if (!id) {
+      id = crypto.randomUUID();
+      store.setItem('plugghjalpen.device', id);
+    }
+    return id;
+  } catch {
+    return 'anonym-enhet';
+  }
+}
+
+/** Anropar skolans backend. Fel kommer tillbaka i samma form som från complete(). */
+export async function serverFetch<T>(settings: Pick<AiSettings, 'classCode'>, path: string, init: RequestInit = {}): Promise<T> {
+  if (!API_URL) throw new AiError('Appen har ingen skolserver inställd.');
+  let res: Response;
+  try {
+    res = await fetch(API_URL + path, {
+      ...init,
+      headers: {
+        ...(init.body ? { 'content-type': 'application/json' } : {}),
+        'x-class-code': settings.classCode ?? '',
+        'x-device-id': deviceId(),
+      },
+    });
+  } catch {
+    throw new AiError('Kunde inte nå skolans server. Kontrollera internetanslutningen.');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json().catch(() => null);
+  if (!res.ok || data?.error) {
+    const e = data?.error ?? {};
+    throw new AiError(e.message || `Skolans server svarade med fel (${res.status}).`, e.code ?? 'other', e.info ?? {});
+  }
+  return data as T;
+}
+
 export async function complete(settings: AiSettings, system: string, user: string, maxTokens = 4000): Promise<string> {
+  if (settings.mode === 'server') {
+    const { text } = await serverFetch<{ text: string }>(settings, '/api/complete', {
+      method: 'POST',
+      body: JSON.stringify({ system, user, maxTokens }),
+    });
+    return text;
+  }
   const key = settings.keys[settings.provider]?.trim();
   if (!key) throw new AiError('Ingen API-nyckel är inlagd. Gå till Inställningar och lägg in en.');
   const model = settings.model;
@@ -132,7 +186,8 @@ export async function complete(settings: AiSettings, system: string, user: strin
     throw new AiError('Kunde inte nå AI-tjänsten. Kontrollera internetanslutningen.');
   }
 
-  const data = await res.json().catch(() => null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json().catch(() => null);
   if (!res.ok) {
     const msg = data?.error?.message ?? data?.error ?? res.statusText;
     if (res.status === 401 || res.status === 403) throw new AiError('API-nyckeln godkändes inte. Kontrollera den i Inställningar.');
@@ -182,7 +237,8 @@ export async function listModels(settings: AiSettings): Promise<string[]> {
   }
   if (res.status === 401 || res.status === 403) throw new AiError('API-nyckeln godkändes inte. Kontrollera den i Inställningar.');
   if (!res.ok) throw new AiError(`Kunde inte hämta modellistan (${res.status}).`);
-  const data = await res.json().catch(() => null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json().catch(() => null);
   const items: { id?: string; active?: boolean }[] = Array.isArray(data?.data) ? data.data : [];
   return items.filter((m) => m.id && m.active !== false).map((m) => m.id!);
 }

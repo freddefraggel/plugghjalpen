@@ -1,4 +1,4 @@
-import { PROVIDERS, type AiSettings } from './ai';
+import { API_URL, PROVIDERS, type AiSettings } from './ai';
 import type { Quiz } from './quiz';
 
 // Allt sparas bara i den här webbläsaren (localStorage).
@@ -21,7 +21,7 @@ export interface QuizResult {
 const SETTINGS_KEY = 'plugghjalpen.settings.v1';
 const RESULTS_KEY = 'plugghjalpen.results.v1';
 
-export const DEFAULT_SETTINGS: AiSettings = { provider: 'anthropic', model: 'claude-haiku-5-5', keys: {} };
+export const DEFAULT_SETTINGS: AiSettings = { mode: API_URL ? 'server' : 'own', provider: 'anthropic', model: 'claude-haiku-5-5', keys: {} };
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -43,7 +43,11 @@ function write(key: string, value: unknown) {
 const RETIRED_MODELS = ['llama-3.3-70b-versatile'];
 
 export function loadSettings(): AiSettings {
-  const s = { ...DEFAULT_SETTINGS, ...read<Partial<AiSettings>>(SETTINGS_KEY, {}) };
+  const stored = read<Partial<AiSettings>>(SETTINGS_KEY, {});
+  const s = { ...DEFAULT_SETTINGS, ...stored };
+  // Den som redan har en egen nyckel sparad fortsätter med den; alla andra använder skolans server om den finns.
+  if (!stored.mode) s.mode = API_URL && !Object.values(stored.keys ?? {}).some(Boolean) ? 'server' : 'own';
+  if (!API_URL) s.mode = 'own';
   const provider = PROVIDERS.find((p) => p.id === s.provider);
   // Leverantörer som tagits bort (t.ex. Gemini) och modeller som inte längre är öppna byts mot standardvalen.
   if (!provider) return { ...DEFAULT_SETTINGS, keys: s.keys ?? {} };
