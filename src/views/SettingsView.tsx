@@ -131,6 +131,8 @@ export default function SettingsView({ settings, onChange }: Props) {
         {status?.kind === 'error' && <div className="error" role="alert">{status.text}</div>}
       </section>
 
+      <p className="small muted" style={{ margin: 0, textAlign: 'center' }}>Version {__APP_VERSION__}</p>
+
       <section className="card" aria-labelledby="data-h">
         <h2 id="data-h">Mina data</h2>
         <p style={{ margin: 0, color: 'var(--ink-2)' }}>
