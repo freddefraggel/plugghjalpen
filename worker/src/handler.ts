@@ -1,6 +1,6 @@
 // Plugghjälpens backend: håller AI-nyckeln hemlig, kontrollerar klasskod och dagskvot,
 // och hämtar webbsidor som källor. Körs som en Cloudflare Worker (se index.ts).
-import { AiError, complete, PROVIDERS, type AiSettings, type ProviderId } from '../../src/lib/ai';
+import { AiError, complete, providerForKey, PROVIDERS, type AiSettings, type ProviderId } from '../../src/lib/ai';
 import { htmlToText, isAllowedUrl } from '../../src/lib/html-text';
 
 export interface Env {
@@ -48,8 +48,11 @@ export async function handle(req: Request, env: Env, quota: QuotaStore): Promise
   if (origin && !allowed.includes(origin)) return fail('Den här webbplatsen får inte använda servern.', 403);
 
   const url = new URL(req.url);
-  const provider = (PROVIDERS.find((p) => p.id === env.AI_PROVIDER)?.id ?? 'anthropic') as ProviderId;
-  const model = env.AI_MODEL || PROVIDERS.find((p) => p.id === provider)!.models[0].id;
+  // Leverantören väljs i första hand utifrån nyckeln, så att det räcker att byta AI_API_KEY.
+  const provider = (providerForKey(env.AI_API_KEY ?? '') ?? PROVIDERS.find((p) => p.id === env.AI_PROVIDER)?.id ?? 'anthropic') as ProviderId;
+  const info = PROVIDERS.find((p) => p.id === provider)!;
+  // AI_MODEL gäller bara när den hör till samma leverantör som AI_PROVIDER.
+  const model = env.AI_MODEL && env.AI_PROVIDER === provider ? env.AI_MODEL : info.models[0].id;
 
   if (url.pathname === '/api/info' && req.method === 'GET') {
     return json({ provider, model, needsClassCode: Boolean(env.CLASS_CODES?.trim()), configured: Boolean(env.AI_API_KEY) });
@@ -86,6 +89,7 @@ export async function handle(req: Request, env: Env, quota: QuotaStore): Promise
       return json({ text: await complete(settings, body.system, body.user, maxTokens) });
     } catch (e) {
       if (e instanceof AiError) {
+        if (e.code === 'auth') return fail('Skolans AI-nyckel fungerar inte just nu. Säg till din lärare.', 502, 'auth');
         const status = e.code === 'too_large' ? 413 : e.code === 'rate' ? 429 : 502;
         return fail(e.message, status, e.code, e.info);
       }

@@ -45,6 +45,23 @@ describe('backend', () => {
     expect(JSON.stringify(body)).not.toContain('hemlig');
   });
 
+  it('väljer leverantör utifrån nyckeln', async () => {
+    const info = async (e: Env) => (await (await handle(req('/api/info'), e, memoryQuota())).json()) as { provider: string; model: string };
+    const base = { AI_PROVIDER: 'anthropic', AI_MODEL: 'claude-haiku-5-5' };
+    expect(await info({ ...base, AI_API_KEY: 'gsk_abc' })).toMatchObject({ provider: 'groq', model: 'openai/gpt-oss-120b' });
+    expect(await info({ ...base, AI_API_KEY: 'sk-ant-abc' })).toMatchObject({ provider: 'anthropic', model: 'claude-haiku-5-5' });
+    expect(await info({ ...base, AI_API_KEY: 'sk-or-abc' })).toMatchObject({ provider: 'openrouter' });
+  });
+
+  it('säger att det är skolans nyckel som felar, inte elevens inställningar', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { message: 'Invalid API Key' } }), { status: 401 })));
+    const res = await handle(req('/api/complete', { method: 'POST', code: '7b-host', body: JSON.stringify({ system: 's', user: 'u' }) }), env, memoryQuota());
+    const body = await res.json();
+    expect(body.error.code).toBe('auth');
+    expect(body.error.message).toContain('lärare');
+    expect(body.error.message).not.toContain('Inställningar');
+  });
+
   it('kräver rätt klasskod, oavsett skiftläge', async () => {
     const wrong = await handle(req('/api/complete', { method: 'POST', body: '{}', code: 'FEL' }), env, memoryQuota());
     expect(wrong.status).toBe(401);

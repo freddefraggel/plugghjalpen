@@ -54,7 +54,7 @@ export interface AiSettings {
   keys: Partial<Record<ProviderId, string>>;
 }
 
-export type AiErrorCode = 'model' | 'too_large' | 'rate' | 'class_code' | 'quota' | 'other';
+export type AiErrorCode = 'model' | 'too_large' | 'rate' | 'auth' | 'class_code' | 'quota' | 'other';
 
 export class AiError extends Error {
   constructor(
@@ -67,6 +67,15 @@ export class AiError extends Error {
 }
 
 /** Hur mycket material (tecken) och svar (tokens) vi skickar per leverantör. Groqs gratisnivå har låga gränser. */
+/** Gissar leverantör utifrån hur nyckeln börjar (gsk_, sk-ant-, sk-or-). */
+export function providerForKey(key: string): ProviderId | undefined {
+  const k = key.trim();
+  if (k.startsWith('sk-ant-')) return 'anthropic';
+  if (k.startsWith('gsk_')) return 'groq';
+  if (k.startsWith('sk-or-')) return 'openrouter';
+  return undefined;
+}
+
 export function budgetFor(provider: ProviderId) {
   if (provider === 'groq') return { inputChars: 10000, outputTokens: 3000 };
   if (provider === 'openrouter') return { inputChars: 24000, outputTokens: 4000 };
@@ -190,7 +199,7 @@ export async function complete(settings: AiSettings, system: string, user: strin
   const data: any = await res.json().catch(() => null);
   if (!res.ok) {
     const msg = data?.error?.message ?? data?.error ?? res.statusText;
-    if (res.status === 401 || res.status === 403) throw new AiError('API-nyckeln godkändes inte. Kontrollera den i Inställningar.');
+    if (res.status === 401 || res.status === 403) throw new AiError('API-nyckeln godkändes inte. Kontrollera den i Inställningar.', 'auth');
     const text = String(msg);
     if (isTooLarge(res.status, text))
       throw new AiError('Materialet är för stort för den här AI-tjänsten.', 'too_large', parseLimits(text));
@@ -235,7 +244,7 @@ export async function listModels(settings: AiSettings): Promise<string[]> {
   } catch {
     throw new AiError('Kunde inte nå AI-tjänsten. Kontrollera internetanslutningen.');
   }
-  if (res.status === 401 || res.status === 403) throw new AiError('API-nyckeln godkändes inte. Kontrollera den i Inställningar.');
+  if (res.status === 401 || res.status === 403) throw new AiError('API-nyckeln godkändes inte. Kontrollera den i Inställningar.', 'auth');
   if (!res.ok) throw new AiError(`Kunde inte hämta modellistan (${res.status}).`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = await res.json().catch(() => null);
