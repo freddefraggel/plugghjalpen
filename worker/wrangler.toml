@@ -4,6 +4,7 @@ main = "src/index.ts"
 compatibility_date = "2026-11-01"
 
 [vars]
+# Leverantören väljs utifrån nyckeln (sk-ant-, gsk_, sk-or-). AI_MODEL gäller bara när nyckeln hör till AI_PROVIDER.
 AI_PROVIDER = "anthropic"
 AI_MODEL = "claude-haiku-5-5"
 ALLOWED_ORIGINS = "https://freddefraggel.github.io,http://localhost:5173,http://localhost:4173"
