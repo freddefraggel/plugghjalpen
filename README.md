@@ -5,7 +5,7 @@ En webbapp där grundskoleelever laddar in sitt studiematerial och får ett quiz
 ## Så fungerar det
 
 - **Material:** Word (.docx), PowerPoint (.pptx), PDF, textfiler, inklistrad text och länkar till Wikipedia. Filerna läses direkt i webbläsaren. Google Docs och Presentationer laddas ned som Word/PowerPoint först.
-- **AI:** valbar leverantör under Inställningar: Anthropic Claude, Google Gemini, Groq eller OpenRouter. Användaren lägger in sin egen API-nyckel, som bara sparas i webbläsaren (localStorage). Det passar testfasen; när elever ska använda appen behövs en liten backend som håller nyckeln.
+- **AI:** valbar leverantör under Inställningar: Anthropic Claude, Groq eller OpenRouter. Under "Testa anslutningen" hämtas vilka modeller nyckeln har tillgång till, och appen byter själv till en som fungerar om den valda inte finns. Användaren lägger in sin egen API-nyckel, som bara sparas i webbläsaren (localStorage). Det passar testfasen; när elever ska använda appen behövs en liten backend som håller nyckeln.
 - **Lagring:** quizresultat sparas bara lokalt i webbläsaren.
 - **Driftsättning:** statisk sajt på GitHub Pages, byggs och publiceras av `.github/workflows/deploy.yml` vid push till `main`. Under repots Settings › Pages ska källan vara "GitHub Actions".
 
