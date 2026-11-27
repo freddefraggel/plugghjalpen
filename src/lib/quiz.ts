@@ -1,4 +1,4 @@
-import { budgetFor, complete, parseJsonLoose, AiError, type AiSettings } from './ai';
+import { budgetFor, complete, parseJsonLoose, salvageObjects, AiError, UNREADABLE, type AiSettings } from './ai';
 import type { Source } from './extract';
 import { curriculumContext, GY_GRADE, matchHeading, schoolOf } from './curriculum';
 
@@ -205,7 +205,7 @@ Elevens material:
       if (chars < 1500) throw tooLargeError();
     }
   }
-  const parsed = parseJsonLoose<{ title?: string; subject?: string; questions?: unknown[] }>(raw);
+  const parsed = parseQuizResponse(raw);
   const questions = (parsed.questions ?? [])
     .map(normalizeQuestion)
     .filter((q): q is Question => q !== null)
@@ -240,6 +240,24 @@ export function shuffleOptions(q: McQuestion, random: () => number = Math.random
     [order[i], order[j]] = [order[j], order[i]];
   }
   return { ...q, options: order.map((i) => q.options[i]), correct: order.indexOf(q.correct) };
+}
+
+/** Läser AI:ns quizsvar. Är det avklippt eller delvis trasigt används de frågor som går att läsa. */
+export function parseQuizResponse(raw: string): { title?: string; subject?: string; questions?: unknown[] } {
+  try {
+    return parseJsonLoose(raw);
+  } catch {
+    const questions = salvageObjects(raw, 'questions');
+    if (!questions.length) {
+      throw new AiError(
+        raw.includes('"questions"')
+          ? 'AI-svaret blev för långt och klipptes av innan första frågan var klar. Prova färre frågor, eller en annan modell under Inställningar.'
+          : UNREADABLE,
+      );
+    }
+    const field = (k: string) => raw.match(new RegExp(`"${k}"\\s*:\\s*"([^"]*)"`))?.[1];
+    return { title: field('title'), subject: field('subject'), questions };
+  }
 }
 
 export function normalizeQuestion(q: unknown): Question | null {
