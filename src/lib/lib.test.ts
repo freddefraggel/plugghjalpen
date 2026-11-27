@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import { parseJsonLoose } from './ai';
-import { normalizeQuestion, buildMaterial, scoreOf, parseQuizResponse } from './quiz';
+import { normalizeQuestion, buildMaterial, scoreOf, parseQuizResponse, materialWarning } from './quiz';
 import { extractPptxFromBuffer, textSource } from './extract';
 
 describe('parseJsonLoose', () => {
@@ -173,5 +173,22 @@ describe('läsa trasiga AI-svar', () => {
   it('säger tydligt när inget går att läsa', () => {
     expect(() => parseQuizResponse('Jag kan tyvärr inte hjälpa till.')).toThrow(/format/);
     expect(() => parseQuizResponse('{"title":"x","questions":[{"type":"mc","question":"Avkl')).toThrow(/klipptes av/);
+  });
+});
+
+describe('varning för långt material', () => {
+  const src = (n: number) => [textSource('Lång text', 'a'.repeat(n))];
+  it('varnar inte när texten ryms', () => {
+    expect(materialWarning(src(5000), { provider: 'groq' })).toBeNull();
+    expect(materialWarning([], { provider: 'groq' })).toBeNull();
+  });
+  it('säger hur mycket som kommer med och vad som hjälper', () => {
+    const w = materialWarning(src(20000), { provider: 'groq' })!;
+    expect(w).toContain('Groq (gratisnivån)');
+    expect(w).toContain('10 000 tecken');
+    expect(w).toMatch(/50 %/);
+    expect(w).toContain('6 gånger');
+    expect(materialWarning(src(70000), { provider: 'anthropic' })).not.toContain('Anthropic-nyckel');
+    expect(materialWarning(src(30000), { provider: 'groq', mode: 'server' })).toContain('Skolans AI-tjänst');
   });
 });
