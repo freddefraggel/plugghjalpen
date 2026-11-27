@@ -119,3 +119,51 @@ export function criteriaForGrade(subject: Lgr22Subject, grade: number): Lgr22Cri
   const end = grade <= 3 ? '3' : grade <= 6 ? '6' : '9';
   return subject.criteria.filter((c) => c.year === end);
 }
+
+// ---- Gymnasiet (ämnesbetyg med nivåer, GY25) ----
+
+export interface ApiGySubject {
+  code: string;
+  name: string;
+  version: number | string;
+  modifiedDate: string;
+  courses?: { code: string; name: string; centralContent?: { text: string } }[];
+  knowledgeRequirements?: { gradeStep: string; text: string }[];
+}
+
+/** Gymnasiets centrala innehåll: kursiva rubriker i <p><em>…</em></p> följda av punktlistor. */
+export function parseCentralContentGy(html: string): Lgr22Area[] {
+  const areas: Lgr22Area[] = [];
+  const items = (ul: string) => [...ul.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)].map((li) => plain(li[1]).replace(/\n/g, ' ')).filter(Boolean);
+  for (const m of html.matchAll(/<p[^>]*>\s*<(em|i|strong|b)>((?:(?!<\/?p\b)[\s\S])*?)<\/\1>\s*<\/p>\s*<ul[^>]*>([\s\S]*?)<\/ul>/gi)) {
+    const heading = plain(m[2]).replace(/\n/g, ' ');
+    const list = items(m[3]);
+    if (heading && list.length) areas.push({ heading, items: list });
+  }
+  if (!areas.length) {
+    // Många ämnen (t.ex. svenska och religionskunskap) har bara en punktlista utan delrubriker.
+    // Då blir varje punkt ett eget område, med punktens första mening som rubrik.
+    const list = [...html.matchAll(/<ul[^>]*>([\s\S]*?)<\/ul>/gi)].flatMap((m) => items(m[1]));
+    for (const item of list) areas.push({ heading: shortHeading(item), items: [item] });
+  }
+  return areas;
+}
+
+/** Första meningen i en punkt, högst cirka 80 tecken. */
+export function shortHeading(item: string): string {
+  const first = item.split(/(?<=[a-zåäö0-9)])\.\s/i)[0].replace(/\.$/, '').trim();
+  if (first.length <= 80) return first;
+  const cut = first.slice(0, 80);
+  return `${cut.slice(0, cut.lastIndexOf(' ')).replace(/[,;:]$/, '')} …`;
+}
+
+/** Varje nivå (t.ex. "Nivå 1c") blir ett "stadium"; betygskriterierna (E, C, A) gäller ämnet och har year "GY". */
+export function simplifyGySubject(s: ApiGySubject): Lgr22Subject {
+  const stages: Lgr22Stage[] = (s.courses ?? [])
+    .map((c) => ({ years: c.name.trim(), areas: parseCentralContentGy(c.centralContent?.text ?? '') }))
+    .filter((st) => st.areas.length);
+  const criteria: Lgr22Criteria[] = (s.knowledgeRequirements ?? [])
+    .filter((k) => ['E', 'C', 'A'].includes(k.gradeStep))
+    .map((k) => ({ year: 'GY', level: k.gradeStep, text: plain(k.text.replace(/<h\d[^>]*>[\s\S]*?<\/h\d>/gi, '')) }));
+  return { code: s.code, name: s.name, version: Number(s.version) || 1, modifiedDate: s.modifiedDate, stages, criteria };
+}

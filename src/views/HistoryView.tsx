@@ -1,4 +1,5 @@
 import { loadResults, type QuizResult } from '../lib/storage';
+import { levelLabel } from '../lib/quiz';
 
 export default function HistoryView({ onOpen }: { onOpen: (r: QuizResult) => void }) {
   const results = loadResults();
@@ -16,7 +17,7 @@ export default function HistoryView({ onOpen }: { onOpen: (r: QuizResult) => voi
                 <span style={{ display: 'flex', flexDirection: 'column' }}>
                   <strong style={{ fontWeight: 600 }}>{r.quiz.title}</strong>
                   <span className="small muted">
-                    {r.quiz.subject} åk {r.quiz.grade} · {new Date(r.finishedAt).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {r.quiz.subject} {levelLabel(r.quiz.grade, r.quiz.level)} · {new Date(r.finishedAt).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </span>
                 <strong style={{ fontSize: 20, color: 'var(--accent-ink)' }}>

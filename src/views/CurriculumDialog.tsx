@@ -5,12 +5,13 @@ import { CloseIcon } from '../icons';
 interface Props {
   subject: string;
   stage: Lgr22Stage;
+  gymnasium?: boolean;
   open: boolean;
   onClose: () => void;
 }
 
 /** Visar Skolverkets centrala innehåll i en bred dialog i stället för i den smala sidopanelen. */
-export default function CurriculumDialog({ subject, stage, open, onClose }: Props) {
+export default function CurriculumDialog({ subject, stage, gymnasium, open, onClose }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -32,7 +33,9 @@ export default function CurriculumDialog({ subject, stage, open, onClose }: Prop
         <div>
           <h2 id="cc-title">Centralt innehåll i {subject.toLowerCase()}</h2>
           <p className="muted small" style={{ margin: '4px 0 0' }}>
-            Årskurs {stage.years.replace('-', '–')} · Skolverkets kursplan (Lgr22)
+            {gymnasium
+              ? `Gymnasiet, ${stage.years.toLowerCase()} · Skolverkets ämnesplan`
+              : `Årskurs ${stage.years.replace('-', '–')} · Skolverkets kursplan (Lgr22)`}
           </p>
         </div>
         <button className="icon-btn" aria-label="Stäng" onClick={onClose}><CloseIcon /></button>

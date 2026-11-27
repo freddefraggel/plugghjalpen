@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { AiSettings } from '../lib/ai';
 import type { Source } from '../lib/extract';
-import { buildMaterial, gradeAnswer, scoreOf, type FreeQuestion, type Grade, type Quiz } from '../lib/quiz';
+import { buildMaterial, gradeAnswer, levelLabel, scoreOf, type FreeQuestion, type Grade, type Quiz } from '../lib/quiz';
 import type { AnswerRecord, QuizResult } from '../lib/storage';
 import { AlertIcon, BackIcon, CheckIcon, CrossIcon } from '../icons';
 
@@ -52,7 +52,7 @@ export default function QuizView({ quiz, sources, settings, onExit, onDone }: Pr
     setError('');
     try {
       const material = sources.length ? buildMaterial(sources).text : fq.modelAnswer;
-      const g = await gradeAnswer(settings, fq, draft, quiz.grade, material);
+      const g = await gradeAnswer(settings, fq, draft, quiz.grade, material, quiz.level);
       setGrade(g);
       record({ given: draft, score: scoreOf(g.verdict), feedback: g.feedback, tip: g.tip, pointsMet: g.pointsMet });
     } catch (e) {
@@ -66,7 +66,7 @@ export default function QuizView({ quiz, sources, settings, onExit, onDone }: Pr
     <>
       <header className="quiz-head">
         <button className="back" onClick={onExit}><BackIcon /> Avsluta</button>
-        <span style={{ fontWeight: 600 }}>{quiz.title} · {quiz.subject} åk {quiz.grade}</span>
+        <span style={{ fontWeight: 600 }}>{quiz.title} · {quiz.subject} {levelLabel(quiz.grade, quiz.level)}</span>
         <span className="muted" style={{ fontSize: 15 }}>Fråga {index + 1} av {total}</span>
       </header>
       <div className="progress" role="progressbar" aria-valuenow={index + 1} aria-valuemin={1} aria-valuemax={total} aria-label="Hur långt du kommit">

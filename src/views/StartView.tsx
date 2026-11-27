@@ -3,7 +3,7 @@ import { budgetFor, type AiSettings } from '../lib/ai';
 import { extractFile, extractLink, textSource, type Source } from '../lib/extract';
 import { generateQuiz, GRADES, SUBJECTS, stageFor, buildMaterial, type Quiz, type QuestionMix } from '../lib/quiz';
 import { CloseIcon, CurriculumIcon, UploadIcon } from '../icons';
-import { loadSubject } from '../lib/curriculum';
+import { GY_GRADE, loadIndex, loadSubject, schoolOf, stageForLevel } from '../lib/curriculum';
 import CurriculumDialog from './CurriculumDialog';
 import { stageForGrade, type Lgr22Stage } from '../lib/lgr22-parse';
 
@@ -30,16 +30,49 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
   const [showPaste, setShowPaste] = useState(false);
   const [subject, setSubject] = useState('');
   const [grade, setGrade] = useState(7);
+  const [level, setLevel] = useState('');
+  const [levels, setLevels] = useState<string[]>([]);
+  const [gySubjects, setGySubjects] = useState<string[]>([]);
   const [stage, setStage] = useState<Lgr22Stage | null>(null);
   const [showCurriculum, setShowCurriculum] = useState(false);
+  const school = schoolOf(grade);
+  const subjects = school === 'GY' ? gySubjects : SUBJECTS;
 
-  // Hämta Skolverkets centrala innehåll för valt ämne och årskurs, om datan finns.
+  // Gymnasiets ämnen kommer från Skolverkets ämnesplaner som hämtas vid bygget.
+  useEffect(() => {
+    if (school !== 'GY') return;
+    let alive = true;
+    loadIndex('GY').then((ix) => alive && setGySubjects(ix?.subjects.map((x) => x.name) ?? []));
+    return () => { alive = false; };
+  }, [school]);
+
+  // Byter man skolform och ämnet inte finns där, börja om med "Gissa".
+  useEffect(() => {
+    if (subject && subjects.length && !subjects.includes(subject)) setSubject('');
+  }, [subjects, subject]);
+
+  // Hämta Skolverkets centrala innehåll för valt ämne och årskurs eller nivå, om datan finns.
   useEffect(() => {
     let alive = true;
     setStage(null);
-    if (subject) loadSubject(subject).then((s) => alive && setStage((s && stageForGrade(s, grade)) ?? null));
+    if (!subject) {
+      setLevels([]);
+      return;
+    }
+    loadSubject(subject, school).then((s) => {
+      if (!alive) return;
+      if (school === 'GY') {
+        const names = s?.stages.map((x) => x.years) ?? [];
+        setLevels(names);
+        setStage((s && stageForLevel(s, level)) ?? null);
+        if (s && names.length && !names.includes(level)) setLevel(names[0]);
+      } else {
+        setLevels([]);
+        setStage((s && stageForGrade(s, grade)) ?? null);
+      }
+    });
     return () => { alive = false; };
-  }, [subject, grade]);
+  }, [subject, grade, school, level]);
   const [mix, setMix] = useState<QuestionMix>('mixed');
   const [count, setCount] = useState(10);
   const [error, setError] = useState('');
@@ -91,7 +124,7 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
     }
     setBusy(true);
     try {
-      onQuiz(await generateQuiz(settings, sources, { subject, grade, mix, count }));
+      onQuiz(await generateQuiz(settings, sources, { subject, grade, level: school === 'GY' ? level : undefined, mix, count }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -197,15 +230,23 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
             <label htmlFor="amne">Ämne</label>
             <select id="amne" className="input" value={subject} onChange={(e) => setSubject(e.target.value)}>
               <option value="">Gissa från materialet</option>
-              {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
+              {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="field">
             <label htmlFor="arskurs">Årskurs</label>
             <select id="arskurs" className="input" value={grade} onChange={(e) => setGrade(Number(e.target.value))}>
-              {GRADES.map((g) => <option key={g} value={g}>Åk {g}</option>)}
+              {GRADES.map((g) => <option key={g} value={g}>{g >= GY_GRADE ? 'Gymnasiet' : `Åk ${g}`}</option>)}
             </select>
           </div>
+          {school === 'GY' && levels.length > 0 && (
+            <div className="field">
+              <label htmlFor="niva">Nivå</label>
+              <select id="niva" className="input" value={level} onChange={(e) => setLevel(e.target.value)}>
+                {levels.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+          )}
           <div className="field">
             <span className="label" id="typ-h">Typ av frågor</span>
             <div className="pills" role="group" aria-labelledby="typ-h">
@@ -223,8 +264,14 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
               <CurriculumIcon />
               <span>
                 {stage
-                  ? `Frågorna kopplas till centralt innehåll i Skolverkets kursplan för ${subject.toLowerCase()} åk ${stage.years.replace('-', '–')}.`
-                  : `Frågorna kopplas till centralt innehåll i Lgr22 för ${subject ? subject.toLowerCase() : 'ämnet'} ${stageFor(grade)}.`}
+                  ? school === 'GY'
+                    ? `Frågorna kopplas till centralt innehåll i Skolverkets ämnesplan för ${subject.toLowerCase()}, ${stage.years.toLowerCase()}.`
+                    : `Frågorna kopplas till centralt innehåll i Skolverkets kursplan för ${subject.toLowerCase()} åk ${stage.years.replace('-', '–')}.`
+                  : school === 'GY'
+                    ? subject
+                      ? `Frågorna kopplas till centralt innehåll i gymnasiets ämnesplan för ${subject.toLowerCase()}.`
+                      : 'Välj ämne för att koppla frågorna till gymnasiets ämnesplan.'
+                    : `Frågorna kopplas till centralt innehåll i Lgr22 för ${subject ? subject.toLowerCase() : 'ämnet'} ${stageFor(grade)}.`}
               </span>
             </div>
             {stage && (
@@ -235,7 +282,7 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
                 <div style={{ paddingLeft: 30 }}>
                   <button className="link-btn" onClick={() => setShowCurriculum(true)}>Se centralt innehåll</button>
                 </div>
-                <CurriculumDialog subject={subject} stage={stage} open={showCurriculum} onClose={() => setShowCurriculum(false)} />
+                <CurriculumDialog subject={subject} stage={stage} gymnasium={school === 'GY'} open={showCurriculum} onClose={() => setShowCurriculum(false)} />
               </>
             )}
           </div>

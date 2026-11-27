@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { Quiz } from '../lib/quiz';
-import { criteriaFor } from '../lib/curriculum';
+import { levelLabel, type Quiz } from '../lib/quiz';
+import { criteriaFor, GY_GRADE } from '../lib/curriculum';
 import type { Lgr22Criteria } from '../lib/lgr22-parse';
 import type { QuizResult } from '../lib/storage';
 
@@ -43,7 +43,7 @@ export default function ResultView({ result, onRetry, onNew }: Props) {
     <main className="main">
       <div className="row" style={{ alignItems: 'stretch' }}>
         <section className="card side score">
-          <span className="muted">{quiz.title} · {quiz.subject} åk {quiz.grade}</span>
+          <span className="muted">{quiz.title} · {quiz.subject} {levelLabel(quiz.grade, quiz.level)}</span>
           <span className="big">{fmt(score)}/{total}</span>
           <span style={{ fontSize: 20, fontWeight: 600 }}>{message}</span>
           <span className="muted" style={{ fontSize: 15 }}>
@@ -62,15 +62,15 @@ export default function ResultView({ result, onRetry, onNew }: Props) {
           <p className="small muted" style={{ margin: 0 }}>
             {quiz.curriculumLabel
               ? `Delarna kommer från ${quiz.curriculumLabel}.`
-              : 'Delarna är AI:ns koppling till centralt innehåll i Lgr22 och kan vara ungefärliga.'}
+              : 'Delarna är AI:ns koppling till Skolverkets centrala innehåll och kan vara ungefärliga.'}
           </p>
         </section>
       </div>
 
       {criteria.length > 0 && (
         <section className="card">
-          <h2>Vad krävs i {quiz.subject.toLowerCase()} i slutet av åk {endYear}?</h2>
-          <p className="muted" style={{ margin: 0 }}>Skolverkets kunskapskrav. Quizet kan inte ge ett betyg, men du ser vad lärarna bedömer.</p>
+          <h2>{quiz.grade >= GY_GRADE ? `Vad krävs för E, C och A i ${quiz.subject.toLowerCase()}?` : `Vad krävs i ${quiz.subject.toLowerCase()} i slutet av åk ${endYear}?`}</h2>
+          <p className="muted" style={{ margin: 0 }}>{quiz.grade >= GY_GRADE ? 'Skolverkets betygskriterier, som gäller ämnet på alla nivåer.' : 'Skolverkets kunskapskrav.'} Quizet kan inte ge ett betyg, men du ser vad lärarna bedömer.</p>
           {criteria.map((c) => (
             <details key={c.level}>
               <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
