@@ -175,3 +175,14 @@ describe('läsa trasiga AI-svar', () => {
     expect(() => parseQuizResponse('{"title":"x","questions":[{"type":"mc","question":"Avkl')).toThrow(/klipptes av/);
   });
 });
+
+describe('tidsgräns mot AI-tjänsten', () => {
+  it('ger ett begripligt fel när tjänsten inte svarar', async () => {
+    const { complete } = await import('./ai');
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new DOMException('timeout', 'TimeoutError'); }));
+    await expect(
+      complete({ provider: 'openrouter', model: 'm', keys: { openrouter: 'sk-or-x' } }, 'Svara med JSON', 'u'),
+    ).rejects.toMatchObject({ code: 'timeout' });
+    vi.unstubAllGlobals();
+  });
+});
