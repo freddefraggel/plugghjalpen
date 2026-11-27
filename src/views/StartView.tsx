@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { budgetFor, type AiSettings } from '../lib/ai';
+import type { AiSettings } from '../lib/ai';
 import { extractFile, extractLink, textSource, type Source } from '../lib/extract';
-import { generateQuiz, GRADES, SUBJECTS, stageFor, buildMaterial, type Quiz, type QuestionMix } from '../lib/quiz';
-import { CloseIcon, CurriculumIcon, UploadIcon } from '../icons';
+import { generateQuiz, GRADES, SUBJECTS, stageFor, materialWarning, type Quiz, type QuestionMix } from '../lib/quiz';
+import { AlertIcon, CloseIcon, CurriculumIcon, UploadIcon } from '../icons';
 import { GY_GRADE, loadIndex, loadSubject, schoolOf, stageForLevel } from '../lib/curriculum';
 import CurriculumDialog from './CurriculumDialog';
 import { stageForGrade, type Lgr22Stage } from '../lib/lgr22-parse';
@@ -132,7 +132,7 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
     }
   }
 
-  const truncated = sources.length > 0 && buildMaterial(sources, budgetFor(settings.provider).inputChars).truncated;
+  const lengthWarning = materialWarning(sources, settings);
 
   return (
     <main className="main">
@@ -221,7 +221,12 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
           ) : (
             <div><button className="btn secondary" onClick={() => setShowPaste(true)}>Klistra in text istället</button></div>
           )}
-          {truncated && <p className="small muted" style={{ margin: 0 }}>Materialet är långt, så quizet bygger på utvalda delar från hela texten.</p>}
+          {lengthWarning && (
+            <div className="note warn" role="status">
+              <AlertIcon />
+              <span>{lengthWarning}</span>
+            </div>
+          )}
         </section>
 
         <aside className="card side" aria-labelledby="settings-h">

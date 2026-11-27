@@ -86,6 +86,35 @@ export function buildMaterial(sources: Source[], maxChars = MAX_CHARS) {
   return { text: condense(full, maxChars), truncated: true };
 }
 
+const thousands = (n: number) => `${Math.round(n / 1000).toLocaleString('sv-SE')} 000`;
+
+/**
+ * Varning när materialet är längre än vad vald AI-tjänst klarar i ett quiz, eller null.
+ * Quizet fungerar ändå, men bygger bara på utvalda delar av texten.
+ */
+export function materialWarning(sources: Source[], settings: Pick<AiSettings, 'provider' | 'mode'>): string | null {
+  if (!sources.length) return null;
+  const total = sources.reduce((n, s) => n + s.name.length + s.text.length + 14, 0);
+  const budget = budgetFor(settings.provider).inputChars;
+  if (total <= budget) return null;
+  const pct = Math.max(1, Math.round((budget / total) * 100));
+  const who =
+    settings.mode === 'server'
+      ? 'Skolans AI-tjänst'
+      : settings.provider === 'groq'
+        ? 'Groq (gratisnivån)'
+        : settings.provider === 'openrouter'
+          ? 'OpenRouter'
+          : 'Claude';
+  const tip =
+    settings.mode === 'server'
+      ? ''
+      : settings.provider === 'anthropic'
+        ? ''
+        : ` Med en Anthropic-nyckel får quizet med ungefär ${(budgetFor('anthropic').inputChars / budget).toLocaleString('sv-SE', { maximumFractionDigits: 1 })} gånger så mycket text.`;
+  return `Materialet är långt, ungefär ${thousands(total)} tecken. ${who} klarar ungefär ${thousands(budget)} tecken per quiz, så frågorna bygger på utvalda delar, ungefär ${pct} % av texten. Ta bort en fil eller gör flera quiz om du vill ha frågor på allt.${tip}`;
+}
+
 /**
  * Kortar en lång text genom att ta jämnt fördelade bitar från hela texten,
  * så att quizet täcker början, mitten och slutet i stället för bara början.
