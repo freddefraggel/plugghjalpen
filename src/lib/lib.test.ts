@@ -186,3 +186,19 @@ describe('tidsgräns mot AI-tjänsten', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('tänkande modeller på OpenRouter', () => {
+  it('ber om låg tankeansträngning och förklarar ett tomt, avklippt svar', async () => {
+    const { complete } = await import('./ai');
+    let sent: Record<string, unknown> = {};
+    vi.stubGlobal('fetch', vi.fn(async (_u: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ choices: [{ message: { content: null }, finish_reason: 'length' }] }), { status: 200 });
+    }));
+    await expect(
+      complete({ provider: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free', keys: { openrouter: 'sk-or-x' } }, 's', 'u'),
+    ).rejects.toThrow(/tänkte för länge/);
+    expect(sent.reasoning).toEqual({ effort: 'low', exclude: true });
+    vi.unstubAllGlobals();
+  });
+});

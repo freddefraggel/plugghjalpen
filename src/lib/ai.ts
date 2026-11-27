@@ -192,6 +192,9 @@ export async function complete(settings: AiSettings, system: string, user: strin
           model,
           max_tokens: maxTokens,
           ...(settings.provider === 'groq' && model.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low' } : {}),
+          // Tänkande modeller på OpenRouter (t.ex. Nemotron) räknar tankarna mot max_tokens. Låg ansträngning
+          // gör att svaret hinner skrivas klart; modeller utan tänkande ignorerar fältet.
+          ...(settings.provider === 'openrouter' ? { reasoning: { effort: 'low', exclude: true } } : {}),
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: user },
@@ -234,6 +237,8 @@ export async function complete(settings: AiSettings, system: string, user: strin
     text = data?.content?.filter((b: { type: string }) => b.type === 'text').map((b: { text: string }) => b.text).join('');
   } else {
     text = data?.choices?.[0]?.message?.content;
+    if (!text && data?.choices?.[0]?.finish_reason === 'length')
+      throw new AiError('AI-modellen hann inte skriva något svar innan gränsen nåddes, troligen för att den tänkte för länge. Prova färre frågor eller en annan modell under Inställningar.');
   }
   if (!text) throw new AiError('AI-tjänsten gav inget svar. Försök igen.');
   return text;
