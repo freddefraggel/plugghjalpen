@@ -219,3 +219,20 @@ describe('varning för långt material', () => {
     expect(materialWarning(src(30000), { provider: 'groq', mode: 'server' })).toContain('Skolans AI-tjänst');
   });
 });
+
+describe('nedräkning', () => {
+  it('meddelar när ett AI-anrop startar och när tiden går ut', async () => {
+    const { complete, onAiCall, AI_TIMEOUT_MS } = await import('./ai');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }), { status: 200 })));
+    const seen: number[] = [];
+    const stop = onAiCall((d) => seen.push(d));
+    const before = Date.now();
+    await complete({ provider: 'groq', model: 'm', keys: { groq: 'gsk_x' } }, 's', 'u');
+    stop();
+    await complete({ provider: 'groq', model: 'm', keys: { groq: 'gsk_x' } }, 's', 'u');
+    expect(seen).toHaveLength(1);
+    expect(seen[0] - before).toBeGreaterThanOrEqual(AI_TIMEOUT_MS - 50);
+    expect(AI_TIMEOUT_MS).toBe(180_000);
+    vi.unstubAllGlobals();
+  });
+});

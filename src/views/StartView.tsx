@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AiSettings } from '../lib/ai';
+import { onAiCall, type AiSettings } from '../lib/ai';
 import { extractFile, extractLink, textSource, type Source } from '../lib/extract';
 import { generateQuiz, GRADES, SUBJECTS, stageFor, materialWarning, type Quiz, type QuestionMix } from '../lib/quiz';
 import { AlertIcon, CloseIcon, CurriculumIcon, UploadIcon } from '../icons';
@@ -77,6 +77,16 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
   const [count, setCount] = useState(10);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [deadline, setDeadline] = useState(0);
+  const [now, setNow] = useState(Date.now());
+
+  // Nedräkning till tidsgränsen för det AI-anrop som pågår (ett quiz kan behöva flera försök).
+  useEffect(() => {
+    if (!busy) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [busy]);
+  const secondsLeft = deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : 0;
 
   const hasKey = settings.mode === 'server' || Boolean(settings.keys[settings.provider]);
 
@@ -123,11 +133,14 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
       return;
     }
     setBusy(true);
+    setDeadline(0);
+    const stop = onAiCall((d) => { setDeadline(d); setNow(Date.now()); });
     try {
       onQuiz(await generateQuiz(settings, sources, { subject, grade, level: school === 'GY' ? level : undefined, mix, count }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      stop();
       setBusy(false);
     }
   }
@@ -295,6 +308,11 @@ export default function StartView({ settings, sources, setSources, onQuiz, goSet
           <button className="btn big" disabled={sources.length === 0 || busy} onClick={create}>
             {busy ? <><span className="spinner" /> Skapar quiz…</> : 'Skapa quiz'}
           </button>
+          {busy && deadline > 0 && (
+            <span className="small muted" style={{ textAlign: 'center' }} role="timer" aria-live="off">
+              Väntar på AI:n, högst {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')} kvar
+            </span>
+          )}
           {sources.length === 0 && <span className="small muted" style={{ textAlign: 'center' }}>Lägg till material först.</span>}
         </aside>
       </div>
