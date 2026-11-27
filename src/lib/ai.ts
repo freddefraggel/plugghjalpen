@@ -184,6 +184,8 @@ export async function complete(settings: AiSettings, system: string, user: strin
           model,
           max_tokens: maxTokens,
           ...(settings.provider === 'groq' && model.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low' } : {}),
+          // Be OpenRouter om ren JSON när appen väntar sig det; modeller som inte stöder det ignorerar fältet.
+          ...(settings.provider === 'openrouter' && /JSON/.test(system) ? { response_format: { type: 'json_object' } } : {}),
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: user },
@@ -260,15 +262,83 @@ export function pickAvailableModel(provider: ProviderId, current: string, availa
 }
 
 /** Plockar ut JSON ur ett svar, även om modellen lagt till text eller ```-block runt. */
+export const UNREADABLE =
+  'AI-modellen svarade inte i det format appen behöver. Försök igen, eller välj en annan modell under Inställningar.';
+
+/** Lagar vanliga fel i JSON från mindre modeller: radbrytningar i strängar och avslutande komman. */
+export function repairJson(s: string): string {
+  let out = '';
+  let inStr = false;
+  let esc = false;
+  for (const c of s) {
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      else if (c === '\n') { out += '\\n'; continue; }
+      else if (c === '\r') continue;
+      else if (c === '\t') { out += ' '; continue; }
+    } else if (c === '"') inStr = true;
+    out += c;
+  }
+  return out.replace(/,(\s*[}\]])/g, '$1');
+}
+
+function tryParse<T>(s: string): T | undefined {
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    try {
+      return JSON.parse(repairJson(s)) as T;
+    } catch {
+      return undefined;
+    }
+  }
+}
+
 export function parseJsonLoose<T>(text: string): T {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const body = fenced ? fenced[1] : text;
   const start = body.search(/[[{]/);
   const end = Math.max(body.lastIndexOf('}'), body.lastIndexOf(']'));
-  if (start < 0 || end < start) throw new AiError('AI-svaret gick inte att läsa. Försök igen.');
-  try {
-    return JSON.parse(body.slice(start, end + 1)) as T;
-  } catch {
-    throw new AiError('AI-svaret gick inte att läsa. Försök igen.');
+  const parsed = start >= 0 && end > start ? tryParse<T>(body.slice(start, end + 1)) : undefined;
+  if (parsed === undefined) throw new AiError(UNREADABLE);
+  return parsed;
+}
+
+/**
+ * Plockar ut de hela objekten i en lista, t.ex. "questions": [ {…}, {…}, {… (avklippt).
+ * Används när svaret klipptes av eller ett objekt är trasigt, så att resten ändå går att använda.
+ */
+export function salvageObjects(text: string, key: string): unknown[] {
+  const at = text.indexOf(`"${key}"`);
+  const open = at < 0 ? -1 : text.indexOf('[', at);
+  if (open < 0) return [];
+  const found: unknown[] = [];
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let from = -1;
+  for (let i = open + 1; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') {
+      if (depth === 0) from = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && from >= 0) {
+        const obj = tryParse(text.slice(from, i + 1));
+        if (obj !== undefined) found.push(obj);
+        from = -1;
+      }
+    } else if (c === ']' && depth === 0) break;
   }
+  return found;
 }

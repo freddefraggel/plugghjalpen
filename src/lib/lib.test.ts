@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import { parseJsonLoose } from './ai';
-import { normalizeQuestion, buildMaterial, scoreOf } from './quiz';
+import { normalizeQuestion, buildMaterial, scoreOf, parseQuizResponse } from './quiz';
 import { extractPptxFromBuffer, textSource } from './extract';
 
 describe('parseJsonLoose', () => {
@@ -12,7 +12,7 @@ describe('parseJsonLoose', () => {
     expect(parseJsonLoose<{ q: string[] }>('{"q":["x"]}')).toEqual({ q: ['x'] });
   });
   it('kastar ett begripligt fel på trasigt svar', () => {
-    expect(() => parseJsonLoose('inget json här')).toThrow(/gick inte att läsa/);
+    expect(() => parseJsonLoose('inget json här')).toThrow(/format/);
   });
 });
 
@@ -154,5 +154,24 @@ describe('shuffleOptions', () => {
     const seen = new Set<number>();
     for (let n = 0; n < 200; n++) seen.add(shuffleOptions(q).correct);
     expect(seen).toEqual(new Set([0, 1, 2, 3]));
+  });
+});
+
+describe('läsa trasiga AI-svar', () => {
+  it('lagar radbrytningar i strängar och avslutande komman', () => {
+    expect(parseJsonLoose<{ a: string; b: number[] }>('{"a": "rad 1\nrad 2", "b": [1, 2,],}')).toEqual({ a: 'rad 1\nrad 2', b: [1, 2] });
+  });
+
+  it('använder de hela frågorna när svaret klipptes av', () => {
+    const raw = '```json\n{"title": "Fotosyntes", "subject": "Biologi", "questions": [\n{"type":"mc","question":"Vad behöver växter?","options":["Ljus","Salt","Sand","Is"],"correct":0,"explanation":"x","source":"s","area":"a"},\n{"type":"free","question":"Förklara {kort}","modelAnswer":"m","points":["p"],"source":"s","area":"a"},\n{"type":"mc","question":"Avklip';
+    const r = parseQuizResponse(raw);
+    expect(r.title).toBe('Fotosyntes');
+    expect(r.subject).toBe('Biologi');
+    expect(r.questions).toHaveLength(2);
+  });
+
+  it('säger tydligt när inget går att läsa', () => {
+    expect(() => parseQuizResponse('Jag kan tyvärr inte hjälpa till.')).toThrow(/format/);
+    expect(() => parseQuizResponse('{"title":"x","questions":[{"type":"mc","question":"Avkl')).toThrow(/klipptes av/);
   });
 });
