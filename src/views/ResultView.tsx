@@ -5,9 +5,12 @@ import type { Lgr22Criteria } from '../lib/lgr22-parse';
 import type { QuizResult } from '../lib/storage';
 import type { QuizReward } from '../lib/rewards';
 import Confetti from './Confetti';
+import ReadMore from './ReadMore';
+import type { AiSettings } from '../lib/ai';
 
 interface Props {
   result: QuizResult;
+  settings: AiSettings;
   /** Finns bara direkt efter ett quiz, inte när ett gammalt resultat öppnas. */
   reward?: QuizReward;
   onRetry: (q: Quiz) => void;
@@ -16,7 +19,7 @@ interface Props {
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','));
 
-export default function ResultView({ result, reward, onRetry, onNew }: Props) {
+export default function ResultView({ result, settings, reward, onRetry, onNew }: Props) {
   const { quiz, answers } = result;
   const [criteria, setCriteria] = useState<Lgr22Criteria[]>([]);
   useEffect(() => {
@@ -97,12 +100,13 @@ export default function ResultView({ result, reward, onRetry, onNew }: Props) {
         {weak.map(({ q, a }, i) => (
           <div className="review" key={i}>
             <span className={`chip ${q.type}`}>{q.type === 'mc' ? 'Flerval' : 'Fritext'}</span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
               <span style={{ fontWeight: 600 }}>{q.question}</span>
               <span style={{ color: 'var(--ink-2)', fontSize: 15 }}>
                 {q.type === 'mc' ? `Rätt svar: ${q.options[q.correct]}. ${q.explanation}` : a?.tip || q.modelAnswer}
               </span>
               {q.source && <span className="small muted">{q.source}</span>}
+              <ReadMore settings={settings} q={q} answer={a} grade={quiz.grade} level={quiz.level} />
             </div>
           </div>
         ))}
