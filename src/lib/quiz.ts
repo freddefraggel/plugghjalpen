@@ -21,11 +21,16 @@ export function levelLabel(grade: number, level?: string) {
   return level ? `gymnasiet, ${level.toLowerCase()}` : 'gymnasiet';
 }
 
-/** Rad till AI:n om elevens nivå. */
-function levelLine(grade: number, level?: string) {
+/** Elevens ungefärliga ålder, t.ex. "cirka 13 år" för åk 7 och "16–19 år" för gymnasiet. */
+export function ageFor(grade: number) {
+  return grade >= GY_GRADE ? '16–19 år' : `cirka ${grade + 6} år`;
+}
+
+/** Rad till AI:n om elevens nivå och ålder. */
+export function levelLine(grade: number, level?: string) {
   return grade >= GY_GRADE
-    ? `Skolform: gymnasieskolan${level ? `, ${level.toLowerCase()}` : ''}`
-    : `Årskurs: ${grade} (${stageFor(grade)})`;
+    ? `Skolform: gymnasieskolan${level ? `, ${level.toLowerCase()}` : ''} (eleven är ${ageFor(grade)})`
+    : `Årskurs: ${grade} (${stageFor(grade)}, eleven är ${ageFor(grade)})`;
 }
 
 export type QuestionMix = 'mc' | 'free' | 'mixed';

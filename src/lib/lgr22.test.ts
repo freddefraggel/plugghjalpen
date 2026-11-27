@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { criteriaForGrade, parseCentralContent, plain, shortHeading, simplifyGySubject, simplifySubject, stageForGrade, type ApiGySubject } from './lgr22-parse';
 import { GY_GRADE, matchHeading, schoolOf, stageForLevel } from './curriculum';
-import { levelLabel } from './quiz';
+import { ageFor, levelLabel, levelLine } from './quiz';
 
 // Utdrag i samma form som Skolverkets Syllabus-API (religionskunskap).
 const REL_79 =
@@ -128,6 +128,10 @@ describe('gymnasiets ämnesplaner', () => {
     expect(stageForLevel(s, 'finns inte')?.years).toBe('Nivå 1c');
     expect(levelLabel(GY_GRADE, 'Nivå 1c')).toBe('gymnasiet, nivå 1c');
     expect(levelLabel(8)).toBe('åk 8');
+    expect(ageFor(1)).toBe('cirka 7 år');
+    expect(ageFor(9)).toBe('cirka 15 år');
+    expect(levelLine(7)).toBe('Årskurs: 7 (åk 7–9, eleven är cirka 13 år)');
+    expect(levelLine(GY_GRADE, 'Nivå 1c')).toBe('Skolform: gymnasieskolan, nivå 1c (eleven är 16–19 år)');
     expect(schoolOf(9)).toBe('GR');
     expect(schoolOf(GY_GRADE)).toBe('GY');
   });
