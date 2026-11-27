@@ -66,7 +66,6 @@ export class AiError extends Error {
   }
 }
 
-/** Hur mycket material (tecken) och svar (tokens) vi skickar per leverantör. Groqs gratisnivå har låga gränser. */
 /** Gissar leverantör utifrån hur nyckeln börjar (gsk_, sk-ant-, sk-or-). */
 export function providerForKey(key: string): ProviderId | undefined {
   const k = key.trim();
@@ -76,6 +75,7 @@ export function providerForKey(key: string): ProviderId | undefined {
   return undefined;
 }
 
+/** Hur mycket material (tecken) och svar (tokens) vi skickar per leverantör. Groqs gratisnivå har låga gränser. */
 export function budgetFor(provider: ProviderId) {
   if (provider === 'groq') return { inputChars: 10000, outputTokens: 3000 };
   if (provider === 'openrouter') return { inputChars: 24000, outputTokens: 4000 };
