@@ -68,11 +68,6 @@ export class AiError extends Error {
 
 /** Hur mycket material (tecken) och svar (tokens) vi skickar per leverantör. Groqs gratisnivå har låga gränser. */
 /** Gissar leverantör utifrån hur nyckeln börjar (gsk_, sk-ant-, sk-or-). */
-/** Hur länge appen väntar på AI-tjänsten. Gratismodeller kan vara långsamma, men inte så här långsamma. */
-export const AI_TIMEOUT_MS = 120_000;
-export const TIMEOUT_MESSAGE =
-  'AI-tjänsten svarade inte inom två minuter. Gratismodeller är ibland överbelastade. Försök igen, prova färre frågor eller välj en annan modell under Inställningar.';
-
 export function providerForKey(key: string): ProviderId | undefined {
   const k = key.trim();
   if (k.startsWith('sk-ant-')) return 'anthropic';
@@ -126,6 +121,11 @@ export function deviceId(): string {
     return 'anonym-enhet';
   }
 }
+
+/** Hur länge appen väntar på AI-tjänsten. Gratismodeller kan vara långsamma, men inte så här långsamma. */
+export const AI_TIMEOUT_MS = 120_000;
+export const TIMEOUT_MESSAGE =
+  'AI-tjänsten svarade inte inom två minuter. Gratismodeller är ibland överbelastade. Försök igen, prova färre frågor eller välj en annan modell under Inställningar.';
 
 /** Anropar skolans backend. Fel kommer tillbaka i samma form som från complete(). */
 export async function serverFetch<T>(settings: Pick<AiSettings, 'classCode'>, path: string, init: RequestInit = {}): Promise<T> {
