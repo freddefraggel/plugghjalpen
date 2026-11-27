@@ -3,16 +3,20 @@ import { levelLabel, type Quiz } from '../lib/quiz';
 import { criteriaFor, GY_GRADE } from '../lib/curriculum';
 import type { Lgr22Criteria } from '../lib/lgr22-parse';
 import type { QuizResult } from '../lib/storage';
+import type { QuizReward } from '../lib/rewards';
+import Confetti from './Confetti';
 
 interface Props {
   result: QuizResult;
+  /** Finns bara direkt efter ett quiz, inte när ett gammalt resultat öppnas. */
+  reward?: QuizReward;
   onRetry: (q: Quiz) => void;
   onNew: () => void;
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','));
 
-export default function ResultView({ result, onRetry, onNew }: Props) {
+export default function ResultView({ result, reward, onRetry, onNew }: Props) {
   const { quiz, answers } = result;
   const [criteria, setCriteria] = useState<Lgr22Criteria[]>([]);
   useEffect(() => {
@@ -41,6 +45,21 @@ export default function ResultView({ result, onRetry, onNew }: Props) {
 
   return (
     <main className="main">
+      {reward && (pct >= 0.8 || reward.newBadges.length > 0) && <Confetti />}
+      {reward && reward.newBadges.length > 0 && (
+        <section className="card" aria-labelledby="new-badges-h">
+          <h2 id="new-badges-h">{reward.newBadges.length === 1 ? 'Nytt märke!' : 'Nya märken!'}</h2>
+          <div className="badges">
+            {reward.newBadges.map((b) => (
+              <div key={b.id} className="badge-card new">
+                <span className="icon" aria-hidden="true">{b.icon}</span>
+                <strong>{b.name}</strong>
+                <span className="small muted">{b.how}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="row" style={{ alignItems: 'stretch' }}>
         <section className="card side score">
           <span className="muted">{quiz.title} · {quiz.subject} {levelLabel(quiz.grade, quiz.level)}</span>
@@ -49,6 +68,12 @@ export default function ResultView({ result, onRetry, onNew }: Props) {
           <span className="muted" style={{ fontSize: 15 }}>
             {[mc.length && `Flerval ${fmt(sum(mc))} av ${mc.length}`, free.length && `Fritext ${fmt(sum(free))} av ${free.length}`].filter(Boolean).join(' · ')}
           </span>
+          {reward && (
+            <div className="reward" aria-label="Belöning">
+              <span className="reward-pill">⭐ +{reward.stars} stjärnor</span>
+              {reward.streak >= 2 && <span className="reward-pill">🔥 {reward.streak} dagar i rad</span>}
+            </div>
+          )}
         </section>
 
         <section className="card grow">

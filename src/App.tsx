@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { AiSettings } from './lib/ai';
 import type { Source } from './lib/extract';
 import type { Quiz } from './lib/quiz';
+import type { QuizReward } from './lib/rewards';
 import { loadSettings, saveResult, saveSettings, type QuizResult } from './lib/storage';
 import { BookIcon } from './icons';
 import StartView from './views/StartView';
@@ -13,7 +14,7 @@ import SettingsView from './views/SettingsView';
 type View =
   | { name: 'start' }
   | { name: 'quiz'; quiz: Quiz; sources: Source[] }
-  | { name: 'result'; result: QuizResult; sources?: Source[] }
+  | { name: 'result'; result: QuizResult; sources?: Source[]; reward?: QuizReward }
   | { name: 'history' }
   | { name: 'settings' };
 
@@ -35,8 +36,8 @@ export default function App() {
         settings={settings}
         onExit={() => setView({ name: 'start' })}
         onDone={(result) => {
-          saveResult(result);
-          setView({ name: 'result', result, sources: view.sources });
+          const reward = saveResult(result);
+          setView({ name: 'result', result, sources: view.sources, reward });
         }}
       />
     );
@@ -73,6 +74,7 @@ export default function App() {
       {view.name === 'result' && (
         <ResultView
           result={view.result}
+          reward={view.reward}
           onRetry={(quiz) => setView({ name: 'quiz', quiz, sources: view.sources ?? [] })}
           onNew={() => setView({ name: 'start' })}
         />
