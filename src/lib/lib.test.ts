@@ -176,6 +176,33 @@ describe('läsa trasiga AI-svar', () => {
   });
 });
 
+describe('tidsgräns mot AI-tjänsten', () => {
+  it('ger ett begripligt fel när tjänsten inte svarar', async () => {
+    const { complete } = await import('./ai');
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new DOMException('timeout', 'TimeoutError'); }));
+    await expect(
+      complete({ provider: 'openrouter', model: 'm', keys: { openrouter: 'sk-or-x' } }, 'Svara med JSON', 'u'),
+    ).rejects.toMatchObject({ code: 'timeout' });
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('tänkande modeller på OpenRouter', () => {
+  it('ber om låg tankeansträngning och förklarar ett tomt, avklippt svar', async () => {
+    const { complete } = await import('./ai');
+    let sent: Record<string, unknown> = {};
+    vi.stubGlobal('fetch', vi.fn(async (_u: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ choices: [{ message: { content: null }, finish_reason: 'length' }] }), { status: 200 });
+    }));
+    await expect(
+      complete({ provider: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free', keys: { openrouter: 'sk-or-x' } }, 's', 'u'),
+    ).rejects.toThrow(/tänkte för länge/);
+    expect(sent.reasoning).toEqual({ effort: 'low', exclude: true });
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('varning för långt material', () => {
   const src = (n: number) => [textSource('Lång text', 'a'.repeat(n))];
   it('varnar inte när texten ryms', () => {

@@ -54,7 +54,7 @@ export interface AiSettings {
   keys: Partial<Record<ProviderId, string>>;
 }
 
-export type AiErrorCode = 'model' | 'too_large' | 'rate' | 'auth' | 'class_code' | 'quota' | 'other';
+export type AiErrorCode = 'model' | 'too_large' | 'rate' | 'auth' | 'timeout' | 'class_code' | 'quota' | 'other';
 
 export class AiError extends Error {
   constructor(
@@ -122,6 +122,11 @@ export function deviceId(): string {
   }
 }
 
+/** Hur länge appen väntar på AI-tjänsten. Gratismodeller kan vara långsamma, men inte så här långsamma. */
+export const AI_TIMEOUT_MS = 120_000;
+export const TIMEOUT_MESSAGE =
+  'AI-tjänsten svarade inte inom två minuter. Gratismodeller är ibland överbelastade. Försök igen, prova färre frågor eller välj en annan modell under Inställningar.';
+
 /** Anropar skolans backend. Fel kommer tillbaka i samma form som från complete(). */
 export async function serverFetch<T>(settings: Pick<AiSettings, 'classCode'>, path: string, init: RequestInit = {}): Promise<T> {
   if (!API_URL) throw new AiError('Appen har ingen skolserver inställd.');
@@ -134,8 +139,10 @@ export async function serverFetch<T>(settings: Pick<AiSettings, 'classCode'>, pa
         'x-class-code': settings.classCode ?? '',
         'x-device-id': deviceId(),
       },
+      signal: AbortSignal.timeout(AI_TIMEOUT_MS + 10_000),
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'TimeoutError') throw new AiError(TIMEOUT_MESSAGE, 'timeout');
     throw new AiError('Kunde inte nå skolans server. Kontrollera internetanslutningen.');
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -171,6 +178,7 @@ export async function complete(settings: AiSettings, system: string, user: strin
           'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
       });
     } else {
       const url =
@@ -184,21 +192,27 @@ export async function complete(settings: AiSettings, system: string, user: strin
           model,
           max_tokens: maxTokens,
           ...(settings.provider === 'groq' && model.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low' } : {}),
-          // Be OpenRouter om ren JSON när appen väntar sig det; modeller som inte stöder det ignorerar fältet.
-          ...(settings.provider === 'openrouter' && /JSON/.test(system) ? { response_format: { type: 'json_object' } } : {}),
+          // Tänkande modeller på OpenRouter (t.ex. Nemotron) räknar tankarna mot max_tokens. Låg ansträngning
+          // gör att svaret hinner skrivas klart; modeller utan tänkande ignorerar fältet.
+          ...(settings.provider === 'openrouter' ? { reasoning: { effort: 'low', exclude: true } } : {}),
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: user },
           ],
         }),
+        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
       });
     }
-  } catch {
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'TimeoutError') throw new AiError(TIMEOUT_MESSAGE, 'timeout');
     throw new AiError('Kunde inte nå AI-tjänsten. Kontrollera internetanslutningen.');
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data: any = await res.json().catch(() => null);
+  const data: any = await res.json().catch((e) => {
+    if (e instanceof DOMException && e.name === 'TimeoutError') throw new AiError(TIMEOUT_MESSAGE, 'timeout');
+    return null;
+  });
   if (!res.ok) {
     const msg = data?.error?.message ?? data?.error ?? res.statusText;
     if (res.status === 401 || res.status === 403) throw new AiError('API-nyckeln godkändes inte. Kontrollera den i Inställningar.', 'auth');
@@ -223,6 +237,8 @@ export async function complete(settings: AiSettings, system: string, user: strin
     text = data?.content?.filter((b: { type: string }) => b.type === 'text').map((b: { text: string }) => b.text).join('');
   } else {
     text = data?.choices?.[0]?.message?.content;
+    if (!text && data?.choices?.[0]?.finish_reason === 'length')
+      throw new AiError('AI-modellen hann inte skriva något svar innan gränsen nåddes, troligen för att den tänkte för länge. Prova färre frågor eller en annan modell under Inställningar.');
   }
   if (!text) throw new AiError('AI-tjänsten gav inget svar. Försök igen.');
   return text;
