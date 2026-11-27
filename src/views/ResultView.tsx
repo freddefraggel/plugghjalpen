@@ -92,21 +92,6 @@ export default function ResultView({ result, reward, onRetry, onNew }: Props) {
         </section>
       </div>
 
-      {criteria.length > 0 && (
-        <section className="card">
-          <h2>{quiz.grade >= GY_GRADE ? `Vad krävs för E, C och A i ${quiz.subject.toLowerCase()}?` : `Vad krävs i ${quiz.subject.toLowerCase()} i slutet av åk ${endYear}?`}</h2>
-          <p className="muted" style={{ margin: 0 }}>{quiz.grade >= GY_GRADE ? 'Skolverkets betygskriterier, som gäller ämnet på alla nivåer.' : 'Skolverkets kunskapskrav.'} Quizet kan inte ge ett betyg, men du ser vad lärarna bedömer.</p>
-          {criteria.map((c) => (
-            <details key={c.level}>
-              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
-                {c.level === 'godtagbara' ? 'Godtagbara kunskaper' : `Betyget ${c.level}`}
-              </summary>
-              {c.text.split('\n').map((p, i) => <p key={i} style={{ margin: '8px 0 0', lineHeight: 1.55 }}>{p}</p>)}
-            </details>
-          ))}
-        </section>
-      )}
-
       <section className="card">
         <h2>{weak.length ? 'Plugga lite mer på' : 'Alla rätt!'}</h2>
         {weak.map(({ q, a }, i) => (
@@ -133,6 +118,21 @@ export default function ResultView({ result, reward, onRetry, onNew }: Props) {
           <button className="btn secondary" onClick={onNew}>Nytt quiz</button>
         </div>
       </section>
+
+      {criteria.length > 0 && (
+        <section className="card">
+          <h2>{quiz.grade >= GY_GRADE ? `Vad krävs för E, C och A i ${quiz.subject.toLowerCase()}?` : `Vad krävs i ${quiz.subject.toLowerCase()} i slutet av åk ${endYear}?`}</h2>
+          <p className="muted" style={{ margin: 0 }}>{quiz.grade >= GY_GRADE ? 'Skolverkets betygskriterier, som gäller ämnet på alla nivåer.' : 'Skolverkets kunskapskrav.'} Quizet kan inte ge ett betyg, men du ser vad lärarna bedömer.</p>
+          {criteria.map((c) => (
+            <details key={c.level}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+                {c.level === 'godtagbara' ? 'Godtagbara kunskaper' : `Betyget ${c.level}`}
+              </summary>
+              {c.text.split('\n').map((p, i) => <p key={i} style={{ margin: '8px 0 0', lineHeight: 1.55 }}>{p}</p>)}
+            </details>
+          ))}
+        </section>
+      )}
     </main>
   );
 }
