@@ -123,9 +123,17 @@ export function deviceId(): string {
 }
 
 /** Hur länge appen väntar på AI-tjänsten. Gratismodeller kan vara långsamma, men inte så här långsamma. */
-export const AI_TIMEOUT_MS = 120_000;
+export const AI_TIMEOUT_MS = 180_000;
+
+/** Lyssnare som får veta när ett AI-anrop startar och när tidsgränsen går ut (ms sedan 1970). */
+type CallListener = (deadline: number) => void;
+const callListeners = new Set<CallListener>();
+export function onAiCall(listener: CallListener): () => void {
+  callListeners.add(listener);
+  return () => { callListeners.delete(listener); };
+}
 export const TIMEOUT_MESSAGE =
-  'AI-tjänsten svarade inte inom två minuter. Gratismodeller är ibland överbelastade. Försök igen, prova färre frågor eller välj en annan modell under Inställningar.';
+  'AI-tjänsten svarade inte inom tre minuter. Gratismodeller är ibland överbelastade. Försök igen, prova färre frågor eller välj en annan modell under Inställningar.';
 
 /** Anropar skolans backend. Fel kommer tillbaka i samma form som från complete(). */
 export async function serverFetch<T>(settings: Pick<AiSettings, 'classCode'>, path: string, init: RequestInit = {}): Promise<T> {
@@ -155,6 +163,8 @@ export async function serverFetch<T>(settings: Pick<AiSettings, 'classCode'>, pa
 }
 
 export async function complete(settings: AiSettings, system: string, user: string, maxTokens = 4000): Promise<string> {
+  const deadline = Date.now() + AI_TIMEOUT_MS;
+  for (const l of callListeners) l(deadline);
   if (settings.mode === 'server') {
     const { text } = await serverFetch<{ text: string }>(settings, '/api/complete', {
       method: 'POST',
