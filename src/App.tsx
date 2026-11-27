@@ -74,6 +74,7 @@ export default function App() {
       {view.name === 'result' && (
         <ResultView
           result={view.result}
+          settings={settings}
           reward={view.reward}
           onRetry={(quiz) => setView({ name: 'quiz', quiz, sources: view.sources ?? [] })}
           onNew={() => setView({ name: 'start' })}

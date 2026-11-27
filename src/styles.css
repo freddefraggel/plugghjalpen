@@ -217,3 +217,13 @@ dialog.curriculum[open] { display: flex; flex-direction: column; }
 .stats { display: flex; gap: 12px; flex-wrap: wrap; }
 .stat { flex: 1 1 140px; display: flex; flex-direction: column; align-items: center; padding: 14px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); }
 .stat strong { font-size: 28px; }
+
+/* Läs mer / Förklara mer under frågor eleven missade */
+.btn.small { font-size: 14px; padding: 8px 14px; align-self: flex-start; }
+.readmore { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.readmore details { background: var(--surface); border-radius: 10px; padding: 10px 12px; font-size: 15px; }
+.readmore summary { cursor: pointer; color: var(--accent); }
+.readmore details p { margin: 8px 0; line-height: 1.55; color: var(--ink-2); }
+.readmore a { color: var(--accent); font-weight: 600; }
+.readmore .explain { background: var(--note); color: var(--note-ink); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.readmore .explain p { margin: 0; line-height: 1.55; }

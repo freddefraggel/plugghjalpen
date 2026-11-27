@@ -43,6 +43,8 @@ export interface McQuestion {
   explanation: string;
   source: string;
   area: string;
+  /** Kort uppslagsord för "Läs mer", t.ex. "Fotosyntes". Saknas i äldre quiz. */
+  topic?: string;
 }
 
 export interface FreeQuestion {
@@ -52,6 +54,7 @@ export interface FreeQuestion {
   points: string[];
   source: string;
   area: string;
+  topic?: string;
 }
 
 export type Question = McQuestion | FreeQuestion;
@@ -180,6 +183,7 @@ Regler:
 - Fritextfrågor ska kräva att eleven förklarar eller resonerar, inte bara nämner ett ord.
 - "area" är det område i det centrala innehållet (Skolverkets kursplan i Lgr22, eller ämnesplan för gymnasiet) som frågan bäst hör till, skrivet kort, t.ex. "Fotosyntes och förbränning".
 - "source" anger var i materialet svaret finns, t.ex. "Fotosyntesen.pptx, bild 5".
+- "topic" är ett kort uppslagsord (1–3 ord) som frågan handlar om, så som det skulle heta som rubrik i ett uppslagsverk, t.ex. "Fotosyntes" eller "Gustav Vasa".
 Svara ENDAST med JSON.`;
 
 export async function generateQuiz(settings: AiSettings, sources: Source[], opts: QuizOptions): Promise<Quiz> {
@@ -203,8 +207,8 @@ Svara med JSON i exakt detta format:
   "title": "kort rubrik på materialet",
   "subject": "ämnet",
   "questions": [
-    {"type":"mc","question":"...","options":["...","...","...","..."],"correct":0,"explanation":"kort förklaring av rätt svar","source":"...","area":"..."},
-    {"type":"free","question":"...","modelAnswer":"ett bra svar","points":["delar ett fullständigt svar ska ha"],"source":"...","area":"..."}
+    {"type":"mc","question":"...","options":["...","...","...","..."],"correct":0,"explanation":"kort förklaring av rätt svar","source":"...","area":"...","topic":"..."},
+    {"type":"free","question":"...","modelAnswer":"ett bra svar","points":["delar ett fullständigt svar ska ha"],"source":"...","area":"...","topic":"..."}
   ]
 }
 
@@ -295,7 +299,8 @@ export function normalizeQuestion(q: unknown): Question | null {
   const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
   const question = str(o.question);
   if (!question) return null;
-  const base = { question, source: str(o.source), area: str(o.area) || 'Övrigt' };
+  const topic = str(o.topic).slice(0, 80);
+  const base = { question, source: str(o.source), area: str(o.area) || 'Övrigt', ...(topic ? { topic } : {}) };
   if (o.type === 'mc') {
     const options = Array.isArray(o.options) ? o.options.map(str).filter(Boolean) : [];
     const correct = Number(o.correct);
